@@ -354,7 +354,7 @@
 
         <details class="sub">
           <summary>세부 설정</summary>
-          <label class="row"><input type="checkbox" id="optShowTab" checked /> 탭 이름 표시</label>
+          <label class="row"><input type="checkbox" id="optShowTab" checked /> 탭 이름 표시 (메인 탭은 빼고 정보·잡담 등만)</label>
           <label class="row"><input type="checkbox" id="optMerge" checked /> 같은 사람의 연속 발언 묶기</label>
           <label class="row"><input type="checkbox" id="optDice" checked /> 다이스 결과 강조</label>
           <label class="row"><input type="checkbox" id="optContrast" checked /> 이름 색이 배경에 묻히지 않게 자동 보정</label>
@@ -844,6 +844,8 @@ const GRADE_COLORS = {
   failure: ["#6b6b75", "#a3a3ad"], fumble: ["#c62828", "#ff7070"],
 };
 
+const isMainTab = tab => /^(main|메인|メイン|主要)$/i.test(String(tab).trim());
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -940,7 +942,8 @@ function buildOutput(settings, mode) {
 
   const pick = i => preview ? ` data-i="${i}"` : "";
   const cls = name => inline ? "" : ` class="${name}"`;
-  const tabLabel = (tab, margin = "0 0 0 8px") => !opts.showTab ? "" : `<span style="${css({
+  // 메인 탭은 표시하지 않고, 정보·잡담 같은 다른 탭만 이름표를 붙인다
+  const tabLabel = (tab, margin = "0 0 0 8px") => !opts.showTab || isMainTab(tab) ? "" : `<span style="${css({
     display: "inline-block", fontSize: ".72em", fontWeight: 500, color: tok("muted"), border: "1px solid", borderColor: tok("line"), borderRadius: "999px", padding: "0 8px", margin, lineHeight: 1.7, verticalAlign: "middle", letterSpacing: 0,
   })}">${escapeHtml(tab)}</span>`;
 
@@ -998,7 +1001,7 @@ function buildOutput(settings, mode) {
       return `<div${groupAttrs(g)} style="${css({ display: "flex", flexWrap: "wrap", gap: "6px 20px", padding: "10px 0", ...sys })}">`
         + `<div style="${css({ flex: `0 0 ${Math.max(9, Math.round(size / 14))}em`, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", textAlign: "right" })}">`
         + avatar(g, size)
-        + `<div style="${nameStyle(g)}">${escapeHtml(g.name)}</div>${opts.showTab ? `<div>${tabLabel(g.tab, "0")}</div>` : ""}</div>`
+        + `<div style="${nameStyle(g)}">${escapeHtml(g.name)}</div>${tabLabel(g.tab, "0") ? `<div>${tabLabel(g.tab, "0")}</div>` : ""}</div>`
         + `<div style="${css({ flex: "1 1 16em", minWidth: 0, paddingTop: "2px" })}">`
         + g.items.map((m, k) => `<div style="${css({ marginTop: k ? ".5em" : 0 })}"${pick(m.i)}>${dice(m, g.color) || body(m)}</div>`).join("")
         + "</div></div>";
