@@ -51,6 +51,7 @@
   .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.5; }
   .hint code, .steps code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
   ol.steps { margin: 6px 0; padding-left: 20px; line-height: 1.6; font-size: 13px; }
+  details summary { cursor: pointer; margin-top: 10px; font-weight: 600; font-size: 13px; }
   .notice { margin: 0 0 4px; padding: 8px 10px; border-radius: 8px; background: #fff4d6; color: #5c4400; font-size: 12.5px; line-height: 1.55; }
   @media (prefers-color-scheme: dark) { .notice { background: #3a3120; color: #f3dfa8; } }
   .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -122,44 +123,45 @@
     </section>
 
     <section class="card">
-      <h2>2. 스탠딩 · 표정 불러오기</h2>
-      <p class="notice">⚠ 코코포리아는 룸에 들어간 사람만 캐릭터 정보를 볼 수 있게 막혀 있어서,
-        <b>링크를 붙여넣는 것만으로는 스탠딩을 가져올 수 없어요.</b> 아래 두 방법 중 하나로 가져와 주세요.</p>
-
-      <h3>방법 A · 북마크로 한 번에 가져오기 (PC 크롬·엣지)</h3>
-      <ol class="steps">
-        <li>노란 버튼을 <b>마우스로 끌어서 북마크바에 놓기</b> (처음 한 번만)<br />
-          <span class="hint">북마크바가 안 보이면 <code>Ctrl+Shift+B</code></span></li>
-        <li>룸 링크를 넣고 <b>룸 열기</b> → 코코포리아 룸에 입장</li>
-        <li>룸 화면에서 북마크바의 <b>스탠딩 가져오기</b> 클릭</li>
-        <li>뜬 창에서 <b>복사하고 닫기</b> → 이 화면 아래 칸에 붙여넣고 <b>적용</b></li>
-      </ol>
+      <h2>2. 룸 링크로 스탠딩 · 표정 불러오기</h2>
+      <div class="field"><span>룸 링크</span>
+        <input type="url" id="roomUrl" placeholder="https://ccfolia.com/rooms/..." />
+      </div>
+      <label class="row"><input type="checkbox" id="roomWithLog" checked /> 채팅 기록도 가져오기</label>
+      <p class="hint" style="margin:0 0 6px 24px">로그 파일이 있으면 대사마다 <b>실제로 쓴 표정</b>을 연결하고, 없으면 룸 채팅으로 로그를 만들어요.</p>
       <div class="buttons">
-        <a class="btn bookmarklet" id="bookmarklet" href="#">스탠딩 가져오기</a>
-        <button class="secondary small" id="btnCopyBm">북마크 코드 복사</button>
+        <button id="btnLoadRoom">불러오기</button>
+        <span id="roomStatus" class="hint" style="margin:0;align-self:center"></span>
       </div>
-      <div class="field" style="margin-top:8px"><span>룸 링크</span>
-        <div class="buttons" style="flex-wrap:nowrap">
-          <input type="url" id="roomUrl" placeholder="https://ccfolia.com/rooms/..." />
-          <button class="small" id="openRoom" style="white-space:nowrap">룸 열기</button>
+      <p class="hint" id="libInfo"></p>
+      <p class="hint">코코포리아가 공식으로 제공하는 기능이 아니라서, 코코포리아 사정에 따라 갑자기 안 될 수 있어요. 그럴 땐 아래 다른 방법을 써주세요.<br />
+        대사 안에 <code>@표정이름</code>이 있으면 그 표정이 연결돼요.</p>
+
+      <details id="altMethods">
+        <summary>링크로 안 될 때 · 다른 방법</summary>
+
+        <h3>방법 A · 북마크로 가져오기 (PC 크롬·엣지)</h3>
+        <ol class="steps">
+          <li>노란 버튼을 <b>마우스로 끌어서 북마크바에 놓기</b> (처음 한 번만)<br />
+            <span class="hint">북마크바가 안 보이면 <code>Ctrl+Shift+B</code></span></li>
+          <li><a href="#" id="openRoom">룸 열기</a> → 코코포리아 룸에 입장</li>
+          <li>룸 화면에서 북마크바의 <b>스탠딩 가져오기</b> 클릭</li>
+          <li>뜬 창에서 <b>복사하고 닫기</b> → 아래 칸에 붙여넣고 <b>적용</b></li>
+        </ol>
+        <div class="buttons">
+          <a class="btn bookmarklet" id="bookmarklet" href="#">스탠딩 가져오기</a>
+          <button class="secondary small" id="btnCopyBm">북마크 코드 복사</button>
         </div>
-      </div>
-      <p class="hint" id="roomInfo"></p>
 
-      <h3>방법 B · 캐릭터를 하나씩 복사하기 (북마크가 안 될 때)</h3>
-      <ol class="steps">
-        <li>코코포리아에서 캐릭터 말(코마)을 우클릭 → <b>복사</b></li>
-        <li>아래 칸에 붙여넣기 (여러 명이면 이어서 계속 붙여넣기)</li>
-        <li><b>적용</b></li>
-      </ol>
-
-      <textarea id="importText" rows="3" style="margin-top:4px" placeholder="여기에 붙여넣기"></textarea>
-      <div class="buttons" style="margin-top:6px">
-        <button class="small" id="btnImport">적용</button>
-        <span id="libInfo" class="hint" style="margin:0;align-self:center"></span>
-      </div>
-      <p class="hint">이미지 주소를 알고 있으면 아래 <b>5. 캐릭터</b>에서 직접 넣을 수도 있어요.<br />
-        대사 안에 <code>@표정이름</code>이 있으면 그 표정이 자동으로 연결돼요.</p>
+        <h3>방법 B · 캐릭터를 하나씩 복사하기</h3>
+        <ol class="steps">
+          <li>코코포리아에서 캐릭터 말(코마)을 우클릭 → <b>복사</b></li>
+          <li>아래 칸에 붙여넣기 (여러 명이면 이어서 계속 붙여넣기) → <b>적용</b></li>
+        </ol>
+        <textarea id="importText" rows="3" style="margin-top:4px" placeholder="여기에 붙여넣기"></textarea>
+        <div class="buttons" style="margin-top:6px"><button class="small" id="btnImport">적용</button></div>
+        <p class="hint">이미지 주소를 알고 있으면 아래 <b>5. 캐릭터</b>에서 직접 넣을 수도 있어요.</p>
+      </details>
     </section>
 
     <section class="card">
@@ -593,21 +595,22 @@ function resolveMessages(settings) {
     const lib = library[c.libId];
     let text = e.text ?? m.text;
 
-    // 표정 결정: 직접 고른 표정 > @태그 > 직전 표정 > 기본 이미지
+    // 표정 결정: 직접 고른 표정 > @태그 > 룸 채팅에 기록된 표정 > 직전 표정 > 기본 이미지
     const defaultFace = c.iconUrl || lib?.iconUrl || lib?.faces[0]?.iconUrl || "";
+    const tagged = lib && findFaceTag(text, lib.faces);
+    if (tagged && opts.stripTag) text = text.replace(tagged.tag, "").replace(/[ \t]{2,}/g, " ").trim();
     let face;
     if (e.face !== undefined) {
       face = e.face;
       lastFace[speaker] = face;
+    } else if (tagged) {
+      face = tagged.face.iconUrl;
+      lastFace[speaker] = face;
+    } else if (isImageUrl(m.roomFace) && !e.speaker) {
+      face = m.roomFace;
+      lastFace[speaker] = face;
     } else {
-      const tagged = lib && findFaceTag(text, lib.faces);
-      if (tagged) {
-        face = tagged.face.iconUrl;
-        lastFace[speaker] = face;
-        if (opts.stripTag) text = text.replace(tagged.tag, "").replace(/[ \t]{2,}/g, " ").trim();
-      } else {
-        face = (opts.sticky && lastFace[speaker]) || defaultFace;
-      }
+      face = (opts.sticky && lastFace[speaker]) || defaultFace;
     }
 
     if (e.hidden || settings.tabs[m.tab] === false || c.visible === false) return;
@@ -813,7 +816,7 @@ ${root}
  * ================================================================ */
 
 const $ = id => document.getElementById(id);
-const state = { messages: [], fileTitle: "", tabs: {}, chars: {}, library: [] };
+const state = { messages: [], fileTitle: "", tabs: {}, chars: {}, library: [], roomMessages: [] };
 
 function readOpts() {
   const num = (id, lo, hi, d) => Math.min(hi, Math.max(lo, +$(id).value || d));
@@ -865,11 +868,18 @@ function loadSource(text, fileName) {
     alert("로그에서 메시지를 찾지 못했어요. 코코포리아에서 내보낸 로그 파일이 맞는지 확인해주세요.");
     return;
   }
-  state.messages = messages.map(m => ({ ...m, e: {} }));
   const titleMatch = text.match(/<title>([\s\S]*?)<\/title>/i);
-  state.fileTitle = (titleMatch ? titleMatch[1].replace(/^ココフォリア\s*-\s*/, "").trim() : "")
+  const title = (titleMatch ? titleMatch[1].replace(/^ココフォリア\s*-\s*/, "").trim() : "")
     || fileName.replace(/\.(html?|txt)$/i, "");
-  $("fileName").textContent = `${fileName} · 메시지 ${messages.length}개`;
+  loadMessages(messages, title, fileName);
+  // 룸 채팅을 먼저 불러온 상태라면 새 로그 파일에도 실제 표정을 연결
+  if (state.roomMessages.length) alignRoomFaces(state.roomMessages);
+}
+
+function loadMessages(messages, title, sourceLabel) {
+  state.messages = messages.map(m => ({ ...m, e: {} }));
+  state.fileTitle = title;
+  $("fileName").textContent = `${sourceLabel} · 메시지 ${messages.length}개`;
 
   // 탭 목록
   state.tabs = {};
@@ -1148,11 +1158,10 @@ $("btnCopyBm").addEventListener("click", () =>
 const roomIdFrom = v => (v.match(/ccfolia\.com\/rooms\/([A-Za-z0-9_-]+)/) || v.trim().match(/^([A-Za-z0-9_-]{6,})$/) || [])[1];
 $("roomUrl").addEventListener("input", () => {
   const v = $("roomUrl").value.trim();
-  const id = roomIdFrom(v);
-  $("roomInfo").textContent = !v ? ""
-    : id ? `룸 ID ${id} 확인! 이제 '룸 열기'를 누르고, 룸 화면에서 북마크를 눌러주세요.`
-    : "코코포리아 룸 링크 형식이 아니에요. (https://ccfolia.com/rooms/... 형태)";
+  $("roomStatus").textContent = !v || roomIdFrom(v) ? "" : "코코포리아 룸 링크 형식이 아니에요. (https://ccfolia.com/rooms/...)";
 });
+$("roomUrl").addEventListener("keydown", e => { if (e.key === "Enter") loadRoom(); });
+$("btnLoadRoom").addEventListener("click", () => loadRoom());
 $("openRoom").addEventListener("click", e => {
   e.preventDefault();
   const id = roomIdFrom($("roomUrl").value);
@@ -1170,6 +1179,202 @@ function importPasted() {
   } catch (err) { alert(err.message); }
 }
 $("btnImport").addEventListener("click", importPasted);
+
+/* ---------------- 룸 링크로 불러오기 ----------------
+ * 코코포리아 웹앱에 공개적으로 들어 있는 Firebase 설정으로 익명 로그인한 뒤
+ * Firestore REST API로 룸의 캐릭터(스탠딩·표정)와 채팅 기록을 읽는다.
+ * 코코포리아 공식 기능이 아니므로 언제든 막힐 수 있다. */
+
+const CCFOLIA = {
+  apiKey: "AIzaSyAMlcPs4ekVSBdzpRdEloqQ8lIgP9lEnRI",
+  docs: "https://firestore.googleapis.com/v1/projects/ccfolia-160aa/databases/(default)/documents",
+};
+const AUTH_KEY = "nabicoco-ccfolia-auth";
+
+class RoomError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
+
+function fsValue(v) {
+  if (!v) return null;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return +v.integerValue;
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("timestampValue" in v) return v.timestampValue;
+  if ("arrayValue" in v) return (v.arrayValue.values || []).map(fsValue);
+  if ("mapValue" in v) return fsFields(v.mapValue.fields);
+  return null;
+}
+function fsFields(f) {
+  const o = {};
+  for (const k in f || {}) o[k] = fsValue(f[k]);
+  return o;
+}
+
+// 익명 로그인 토큰. 쓸 때마다 계정이 새로 생기지 않도록 브라우저에 저장해두고 갱신해서 쓴다.
+async function ccfoliaToken(forceNew) {
+  let auth = null;
+  try { auth = JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (_) {}
+  const save = a => { try { localStorage.setItem(AUTH_KEY, JSON.stringify(a)); } catch (_) {} };
+  const fromResponse = (idToken, refreshToken, expiresIn) =>
+    ({ idToken, refreshToken, expiresAt: Date.now() + (+expiresIn || 3600) * 1000 });
+
+  if (!forceNew && auth?.idToken && auth.expiresAt > Date.now() + 60000) return auth.idToken;
+  if (!forceNew && auth?.refreshToken) {
+    try {
+      const r = await fetch("https://securetoken.googleapis.com/v1/token?key=" + CCFOLIA.apiKey, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(auth.refreshToken),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        auth = fromResponse(j.id_token, j.refresh_token, j.expires_in);
+        save(auth);
+        return auth.idToken;
+      }
+    } catch (_) {}
+  }
+  let r;
+  try {
+    r = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + CCFOLIA.apiKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ returnSecureToken: true }),
+    });
+  } catch (_) {
+    throw new RoomError("코코포리아 서버에 연결하지 못했어요. 인터넷 연결을 확인해주세요.");
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.idToken) throw new RoomError("코코포리아 접속(익명 로그인)이 막혔어요: " + (j.error?.message || r.status), r.status);
+  auth = fromResponse(j.idToken, j.refreshToken, j.expiresIn);
+  save(auth);
+  return auth.idToken;
+}
+
+async function ccfoliaGet(path, token) {
+  let r;
+  try {
+    r = await fetch(CCFOLIA.docs + path, { headers: { Authorization: "Bearer " + token } });
+  } catch (_) {
+    throw new RoomError("코코포리아 서버에 연결하지 못했어요. 인터넷 연결을 확인해주세요.");
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new RoomError(j.error?.message || "HTTP " + r.status, r.status);
+  return j;
+}
+
+async function ccfoliaList(roomId, collection, token, onPage) {
+  const docs = [];
+  let page = "";
+  do {
+    const j = await ccfoliaGet(`/rooms/${encodeURIComponent(roomId)}/${collection}?pageSize=300`
+      + (page ? "&pageToken=" + encodeURIComponent(page) : ""), token);
+    docs.push(...(j.documents || []));
+    page = j.nextPageToken;
+    onPage?.(docs.length);
+  } while (page);
+  return docs;
+}
+
+function roomCharacter(doc) {
+  const c = fsFields(doc.fields);
+  return {
+    name: c.name || "",
+    color: normalizeColor(c.color || "") || "",
+    iconUrl: isImageUrl(c.iconUrl) ? c.iconUrl : "",
+    faces: (c.faces || []).filter(f => f && isImageUrl(f.iconUrl)).map(f => ({ label: String(f.label || ""), iconUrl: f.iconUrl })),
+  };
+}
+
+function roomMessage(doc) {
+  const f = fsFields(doc.fields);
+  const roll = f.extend?.roll?.result || "";
+  return {
+    tab: f.channelName || f.channel || "main",
+    name: f.name || "NONAME",
+    text: [f.text || "", roll].filter(Boolean).join(" ").trim(),
+    color: normalizeColor(f.color || "") || "#888888",
+    roomFace: isImageUrl(f.iconUrl) ? f.iconUrl : "",
+    time: f.createdAt || doc.createTime || "",
+  };
+}
+
+// 로그 파일의 대사와 룸 채팅을 순서대로 맞춰서, 대사마다 실제로 쓴 표정을 붙인다.
+function alignRoomFaces(roomMsgs) {
+  const norm = s => s.replace(/\s+/g, "");
+  let j = 0, matched = 0;
+  for (const m of state.messages) {
+    const text = norm(m.text);
+    for (let k = j; k < Math.min(roomMsgs.length, j + 300); k++) {
+      const r = roomMsgs[k];
+      if (r.name === m.name && norm(r.text) === text) {
+        m.roomFace = r.roomFace;
+        j = k + 1;
+        matched++;
+        break;
+      }
+    }
+  }
+  return matched;
+}
+
+let roomLoading = false;
+async function loadRoom() {
+  if (roomLoading) return;
+  const roomId = roomIdFrom($("roomUrl").value);
+  if (!roomId) { toast("코코포리아 룸 링크를 넣어주세요"); $("roomUrl").focus(); return; }
+  const status = t => { $("roomStatus").textContent = t; };
+  roomLoading = true;
+  $("btnLoadRoom").disabled = true;
+  try {
+    status("코코포리아에 접속하는 중…");
+    let token = await ccfoliaToken();
+    let docs;
+    try {
+      docs = await ccfoliaList(roomId, "characters", token);
+    } catch (err) {
+      if (err.status !== 401 && err.status !== 403) throw err;
+      // 저장해둔 토큰이 무효일 수 있으니 새로 로그인해서 한 번 더
+      token = await ccfoliaToken(true);
+      docs = await ccfoliaList(roomId, "characters", token);
+    }
+    const characters = docs.map(roomCharacter).filter(c => c.name);
+    applyLibrary(characters, true);
+
+    let summary = `캐릭터 ${characters.length}명`;
+    if ($("roomWithLog").checked) {
+      status("채팅 기록을 가져오는 중…");
+      const msgDocs = await ccfoliaList(roomId, "messages", token, n => status(`채팅 기록을 가져오는 중… ${n}개`));
+      const msgs = msgDocs.map(roomMessage).filter(m => m.text).sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+      state.roomMessages = msgs;
+      if (state.messages.length) {
+        const matched = alignRoomFaces(msgs);
+        summary += ` · 대사 ${matched}/${state.messages.length}개에 실제 표정 연결`;
+        update();
+      } else if (msgs.length) {
+        let title = "";
+        try { title = fsFields((await ccfoliaGet(`/rooms/${encodeURIComponent(roomId)}`, token)).fields).name || ""; } catch (_) {}
+        loadMessages(msgs, title || `룸 ${roomId}`, `룸 채팅 (${roomId})`);
+        summary += ` · 채팅 ${msgs.length}개로 로그 생성`;
+      }
+    }
+    status("");
+    $("libInfo").textContent = summary + " 불러옴";
+    toast("룸에서 불러왔어요");
+  } catch (err) {
+    status("");
+    const hint = err.status === 403 || err.status === 404
+      ? "\n\n비공개 룸이거나, 룸 링크가 틀렸거나, 코코포리아가 이 방식을 막았을 수 있어요."
+      : "";
+    alert("룸에서 불러오지 못했어요.\n" + err.message + hint + "\n\n'링크로 안 될 때 · 다른 방법'을 써주세요.");
+    $("altMethods").open = true;
+  } finally {
+    roomLoading = false;
+    $("btnLoadRoom").disabled = false;
+  }
+}
 
 /* ---------------- 옵션 · 저장 ---------------- */
 
