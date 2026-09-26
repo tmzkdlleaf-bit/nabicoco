@@ -2,255 +2,442 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
 <title>코코포리아 로그 변환기</title>
+<script>
+  // 첫 화면이 그려지기 전에 저장된 테마를 적용해서 깜빡임을 막는다
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("nabicoco-theme"); } catch (e) {}
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
   :root {
-    --bg: #f5f5f7; --panel: #ffffff; --text: #1d1d1f; --muted: #6e6e73;
-    --line: #e2e2e6; --accent: #6c5ce7; --accent-text: #ffffff; --soft: #f0eefc;
+    color-scheme: light;
+    --bg: #f4f4f7; --surface: #ffffff; --surface-2: #f0f0f5; --text: #1c1c21; --muted: #5f5f69;
+    --line: #e2e2e9; --accent: #5b45e0; --accent-text: #ffffff; --accent-soft: #eeebff;
+    --danger: #c62828; --warn-bg: #fff4d6; --warn-text: #5c4400; --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 4px 16px rgb(0 0 0 / .04);
+    --radius: 14px;
+    --font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151518; --panel: #1f1f24; --text: #ececf1; --muted: #9a9aa3;
-      --line: #33333b; --accent: #a29bfe; --accent-text: #151518; --soft: #2a2838;
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121215; --surface: #1b1b20; --surface-2: #24242b; --text: #ececf1; --muted: #a5a5b0;
+      --line: #32323b; --accent: #a99bff; --accent-text: #17132e; --accent-soft: #2a2547;
+      --danger: #ff7a7a; --warn-bg: #3a3120; --warn-text: #f3dfa8; --shadow: none;
     }
   }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121215; --surface: #1b1b20; --surface-2: #24242b; --text: #ececf1; --muted: #a5a5b0;
+    --line: #32323b; --accent: #a99bff; --accent-text: #17132e; --accent-soft: #2a2547;
+    --danger: #ff7a7a; --warn-bg: #3a3120; --warn-text: #f3dfa8; --shadow: none;
+  }
+
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
-    font-size: 14px;
+    display: flex; flex-direction: column; height: 100dvh;
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--font);
+    font-size: 15px; line-height: 1.6; letter-spacing: -0.005em;
+    word-break: keep-all; overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased;
   }
-  header { padding: 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  header h1 { margin: 0; font-size: 18px; }
-  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-  main { display: grid; grid-template-columns: 380px 1fr; gap: 16px; padding: 16px; height: calc(100vh - 74px); }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; height: auto; } #preview { height: 75vh; } }
-  aside { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-  section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-  section.card h2 { margin: 0 0 8px; font-size: 14px; }
-  section.card h3 { margin: 12px 0 6px; font-size: 13px; }
-  #drop {
-    border: 2px dashed var(--line); border-radius: 10px; padding: 20px 12px; text-align: center;
-    color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s;
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+
+  /* ---- 머리글 ---- */
+  .app-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 12px 20px; padding-top: max(12px, env(safe-area-inset-top));
+    background: var(--surface); border-bottom: 1px solid var(--line);
   }
-  #drop.over { border-color: var(--accent); background: var(--soft); }
-  #drop strong { color: var(--text); }
-  #fileName { margin-top: 8px; font-size: 12px; color: var(--muted); word-break: break-all; }
-  label.row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
-  .field { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .logo { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 20px; background: var(--accent-soft); flex: none; }
+  .brand h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+
+  /* ---- 버튼 모양 선택(세그먼트) ---- */
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-2); border-radius: 11px; border: 1px solid var(--line); flex-wrap: wrap; }
+  .seg label { position: relative; cursor: pointer; }
+  .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .seg span { display: block; padding: 6px 12px; min-height: 32px; border-radius: 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); white-space: nowrap; line-height: 20px; }
+  .seg input:checked + span { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+  .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .seg.full { display: flex; width: 100%; }
+  .seg.full label { flex: 1; text-align: center; }
+
+  /* ---- 본문 배치 ---- */
+  .app-head, .banner { flex: none; }
+  #app { flex: 1; display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 16px; padding: 16px; min-height: 0; }
+  #panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .panel-scroll { flex: 1; overflow-y: auto; padding: 8px 16px 16px; scrollbar-gutter: stable; }
+
+  details.card { border-bottom: 1px solid var(--line); padding: 4px 0 14px; }
+  details.card:last-child { border-bottom: none; }
+  details.card > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 0 8px; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary h2 { margin: 0; font-size: 15px; font-weight: 700; flex: 1; letter-spacing: -0.01em; }
+  details.card > summary::after { content: "▾"; color: var(--muted); transition: transform .15s; }
+  details.card:not([open]) > summary::after { transform: rotate(-90deg); }
+  .num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-text); display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+
+  details.sub { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; }
+  details.sub > summary { cursor: pointer; padding: 10px 0; font-weight: 600; font-size: 13.5px; color: var(--muted); }
+  details.sub[open] { padding-bottom: 12px; }
+
+  .field { display: grid; grid-template-columns: 88px 1fr; align-items: center; gap: 10px; padding: 6px 0; }
+  .field > span:first-child { font-size: 13.5px; color: var(--muted); font-weight: 600; }
+  .stack { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+  .stack > span:first-child { font-size: 13.5px; color: var(--muted); font-weight: 600; }
+  label.row { display: flex; align-items: center; gap: 10px; padding: 5px 0; min-height: 32px; cursor: pointer; font-size: 14px; }
+  input[type=checkbox], input[type=radio] { width: 18px; height: 18px; accent-color: var(--accent); flex: none; margin: 0; }
   select, input[type=text], input[type=number], input[type=url], textarea {
-    width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px;
-    background: var(--bg); color: var(--text); font: inherit;
+    width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px;
+    background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
   }
-  textarea { resize: vertical; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chips label { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; display: flex; gap: 5px; align-items: center; cursor: pointer; }
-  .chips small { color: var(--muted); }
-  .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.5; }
-  .hint code, .steps code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
-  ol.steps { margin: 6px 0; padding-left: 20px; line-height: 1.6; font-size: 13px; }
-  details summary { cursor: pointer; margin-top: 10px; font-weight: 600; font-size: 13px; }
-  .notice { margin: 0 0 4px; padding: 8px 10px; border-radius: 8px; background: #fff4d6; color: #5c4400; font-size: 12.5px; line-height: 1.55; }
-  @media (prefers-color-scheme: dark) { .notice { background: #3a3120; color: #f3dfa8; } }
-  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  select:hover, input[type=text]:hover, input[type=url]:hover, textarea:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  textarea { resize: vertical; line-height: 1.6; }
+  .range { display: flex; align-items: center; gap: 10px; }
+  .range input { flex: 1; accent-color: var(--accent); }
+  .range output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; line-height: 1.6; }
+  ol.steps { margin: 6px 0; padding-left: 20px; line-height: 1.7; font-size: 13.5px; }
+  .notice { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-text); font-size: 13px; line-height: 1.6; }
+
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   button, a.btn {
-    border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer;
-    background: var(--accent); color: var(--accent-text); text-decoration: none; display: inline-block;
+    border: 1px solid transparent; border-radius: 10px; padding: 8px 16px; min-height: 38px; font: inherit; font-size: 14px; font-weight: 650;
+    cursor: pointer; background: var(--accent); color: var(--accent-text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: filter .15s, background .15s;
   }
-  button.secondary, a.btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-  button.small { padding: 4px 10px; font-size: 12px; }
-  button.danger { background: transparent; color: #e53935; border: 1px solid #e5393566; }
-  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:hover:not(:disabled), a.btn:hover { filter: brightness(1.07); }
+  button.secondary, a.btn.secondary { background: var(--surface); color: var(--text); border-color: var(--line); }
+  button.secondary:hover:not(:disabled) { background: var(--surface-2); filter: none; }
+  button.small, a.btn.small { padding: 5px 12px; min-height: 32px; font-size: 13px; }
+  button.danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+  button.ghost { background: transparent; color: var(--muted); border-color: transparent; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
   a.bookmarklet { background: #f9a825; color: #222; cursor: grab; }
 
-  .char { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
-  .char.narr { background: var(--soft); }
-  .char-row { display: flex; align-items: center; gap: 6px; }
-  .char-row + .char-row { margin-top: 6px; }
-  .char .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .char input[type=color] { width: 28px; height: 26px; padding: 0; border: none; background: none; cursor: pointer; flex: none; }
-  .char .thumb { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; object-position: top; flex: none; background: var(--bg); border: 1px solid var(--line); }
-  .char .faces { color: var(--muted); font-size: 11px; margin-top: 4px; }
-  .char label { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; }
+  #drop {
+    border: 2px dashed var(--line); border-radius: 12px; padding: 22px 14px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; background: var(--surface-2);
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  #drop strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
+  #fileName { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; margin: 14px 0 6px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
-  #previewWrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
-  #previewBar { padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-  #preview { flex: 1; width: 100%; border: none; background: #fff; }
-  #empty { flex: 1; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips label { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 32px; display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 14px; }
+  .chips label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .chips small { color: var(--muted); }
+
+  .char { border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-bottom: 8px; display: grid; grid-template-columns: 52px 1fr; gap: 6px 10px; }
+  .char.narr { background: var(--surface-2); }
+  .char.off { opacity: .55; }
+  .char .thumb { grid-row: span 3; width: 52px; height: 52px; border-radius: 10px; object-fit: cover; object-position: top; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 20px; }
+  .char-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .char .count { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+  .char input[type=color] { width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; cursor: pointer; flex: none; }
+  .char .faces { grid-column: 2; color: var(--muted); font-size: 12.5px; }
+  .char label { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; cursor: pointer; }
+  .char .url { grid-column: 1 / -1; }
+
+  .export-bar { border-top: 1px solid var(--line); padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); background: var(--surface); }
+  .export-bar .buttons button { flex: 1 1 auto; }
+  #saveState { margin: 8px 0 0; font-size: 12.5px; }
+
+  /* ---- 미리보기 ---- */
+  #previewWrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  #previewBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); }
+  #previewTitle { font-size: 13.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #preview { flex: 1; width: 100%; border: none; background: transparent; }
+  #empty { flex: 1; display: grid; place-items: center; padding: 32px 20px; text-align: center; }
+  #empty .inner { max-width: 420px; }
+  #empty h2 { margin: 12px 0 6px; font-size: 20px; letter-spacing: -0.02em; }
+  #empty ol { text-align: left; color: var(--muted); line-height: 1.9; margin: 12px auto 20px; padding-left: 22px; width: fit-content; }
+  #empty .big { font-size: 44px; }
+
+  .banner { margin: 12px 16px 0; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+  .banner span { flex: 1; min-width: 200px; }
+
   #toast {
-    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #222; color: #fff;
-    padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10;
+    position: fixed; left: 50%; bottom: 24px; bottom: max(24px, calc(env(safe-area-inset-bottom) + 72px)); transform: translate(-50%, 8px);
+    background: #26262c; color: #fff; padding: 10px 12px 10px 16px; border-radius: 12px; font-size: 14px;
+    display: flex; align-items: center; gap: 12px; max-width: min(92vw, 520px);
+    opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; box-shadow: 0 6px 24px rgb(0 0 0 / .25);
   }
-  #toast.show { opacity: 1; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  #toast button { background: transparent; color: #c9c0ff; border: none; padding: 4px 8px; min-height: 28px; }
+  @media (min-width: 861px) { #toast { bottom: 24px; } }
 
+  /* ---- 대사 수정 창 ---- */
   dialog {
-    border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(560px, 94vw);
-    background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 16px; padding: 0; width: min(600px, 94vw); max-height: 92dvh;
+    background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgb(0 0 0 / .3);
   }
-  dialog::backdrop { background: rgba(0,0,0,.45); }
-  dialog form { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  dialog h2 { margin: 0; font-size: 15px; }
+  dialog::backdrop { background: rgb(0 0 0 / .45); }
+  dialog form { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  dialog h2 { margin: 0; font-size: 17px; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 4px; }
-  .toolbar button { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 3px 9px; min-width: 32px; font-weight: 400; }
-  .toolbar input[type=color] { width: 32px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; }
-  #edText { min-height: 120px; font-size: 14px; line-height: 1.6; }
-  .faceList { display: flex; flex-wrap: wrap; gap: 6px; }
-  .faceList label { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; cursor: pointer; width: 64px; text-align: center; word-break: break-all; }
-  .faceList img, .faceList .noimg { width: 56px; height: 56px; object-fit: cover; object-position: top; border-radius: 8px; border: 2px solid var(--line); display: grid; place-items: center; color: var(--muted); background: var(--bg); }
-  .faceList input { display: none; }
-  .faceList input:checked + img, .faceList input:checked + .noimg { border-color: var(--accent); }
+  .toolbar button { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); padding: 4px 10px; min-width: 36px; min-height: 32px; font-weight: 500; }
+  .toolbar input[type=color] { width: 36px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: none; }
+  #edText { min-height: 140px; font-size: 15px; line-height: 1.7; }
+  .faceList { display: flex; flex-wrap: wrap; gap: 8px; }
+  .faceList label { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; cursor: pointer; width: 76px; text-align: center; }
+  .faceList img, .faceList .noimg { width: 68px; height: 68px; object-fit: cover; object-position: top; border-radius: 12px; border: 2px solid var(--line); display: grid; place-items: center; color: var(--muted); background: var(--surface-2); }
+  .faceList input { position: absolute; opacity: 0; pointer-events: none; }
+  .faceList input:checked + img, .faceList input:checked + .noimg { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .faceList input:focus-visible + img, .faceList input:focus-visible + .noimg { outline: 2px solid var(--accent); outline-offset: 2px; }
   .dialog-actions { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+
+  /* ---- 모바일: 아래 탭으로 설정/미리보기 전환 ---- */
+  .tabbar { display: none; }
+  @media (max-width: 860px) {
+    .app-head { padding: 8px 12px; flex-wrap: nowrap; }
+    .brand p, .logo { display: none; }
+    .brand { flex: 1; }
+    .brand > div { min-width: 0; }
+    .brand h1 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .app-head .seg { flex: none; flex-wrap: nowrap; }
+    .app-head .seg span { padding: 5px 8px; font-size: 12.5px; }
+    .export-bar { padding: 10px 12px; }
+    .export-bar details.sub { display: none; }
+    #app { grid-template-columns: 1fr; padding: 10px; margin-bottom: calc(64px + env(safe-area-inset-bottom)); }
+    #app[data-view="settings"] #previewWrap, #app[data-view="preview"] #panel { display: none; }
+    .tabbar {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; gap: 8px;
+      padding: 8px 12px; padding-bottom: max(8px, env(safe-area-inset-bottom));
+      background: var(--surface); border-top: 1px solid var(--line);
+    }
+    .tabbar button { flex: 1; min-height: 46px; background: transparent; color: var(--muted); border: 1px solid transparent; }
+    .tabbar button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>코코포리아 로그 변환기</h1>
-  <p>코코포리아에서 내보낸 로그를 보기 좋은 HTML로 바꿔줍니다. 로그는 서버로 전송되지 않고 브라우저 안에서만 처리돼요.</p>
+<header class="app-head">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">🎲</div>
+    <div>
+      <h1>코코포리아 로그 변환기</h1>
+      <p>로그는 서버로 보내지 않고 이 브라우저 안에서만 처리돼요.</p>
+    </div>
+  </div>
+  <div class="seg" role="radiogroup" aria-label="화면 테마">
+    <label><input type="radio" name="appTheme" value="system" checked /><span>시스템</span></label>
+    <label><input type="radio" name="appTheme" value="light" /><span>☀ 라이트</span></label>
+    <label><input type="radio" name="appTheme" value="dark" /><span>🌙 다크</span></label>
+  </div>
 </header>
 
-<main>
-  <aside>
-    <section class="card">
-      <h2>1. 로그 파일</h2>
-      <div id="drop" tabindex="0" role="button">
-        <strong>여기에 파일을 끌어다 놓거나 클릭</strong><br />
-        코코포리아 → 룸 메뉴 → 로그 출력
-      </div>
-      <input type="file" id="file" accept=".html,.htm,.txt" hidden />
-      <div id="fileName"></div>
-    </section>
+<div class="banner" id="restoreBanner" hidden>
+  <span id="restoreText"></span>
+  <button class="small" id="btnRestore">이어서 하기</button>
+  <button class="small secondary" id="btnDiscard">지우기</button>
+</div>
 
-    <section class="card">
-      <h2>2. 룸 링크로 스탠딩 · 표정 불러오기</h2>
-      <div class="field"><span>룸 링크</span>
-        <input type="url" id="roomUrl" placeholder="https://ccfolia.com/rooms/..." />
-      </div>
-      <label class="row"><input type="checkbox" id="roomWithLog" checked /> 채팅 기록도 가져오기</label>
-      <p class="hint" style="margin:0 0 6px 24px">로그 파일이 있으면 대사마다 <b>실제로 쓴 표정</b>을 연결하고, 없으면 룸 채팅으로 로그를 만들어요.</p>
-      <div class="buttons">
-        <button id="btnLoadRoom">불러오기</button>
-        <span id="roomStatus" class="hint" style="margin:0;align-self:center"></span>
-      </div>
-      <p class="hint" id="libInfo"></p>
-      <p class="hint">코코포리아가 공식으로 제공하는 기능이 아니라서, 코코포리아 사정에 따라 갑자기 안 될 수 있어요. 그럴 땐 아래 다른 방법을 써주세요.<br />
-        대사 안에 <code>@표정이름</code>이 있으면 그 표정이 연결돼요.</p>
-
-      <details id="altMethods">
-        <summary>링크로 안 될 때 · 다른 방법</summary>
-
-        <h3>방법 A · 북마크로 가져오기 (PC 크롬·엣지)</h3>
-        <ol class="steps">
-          <li>노란 버튼을 <b>마우스로 끌어서 북마크바에 놓기</b> (처음 한 번만)<br />
-            <span class="hint">북마크바가 안 보이면 <code>Ctrl+Shift+B</code></span></li>
-          <li><a href="#" id="openRoom">룸 열기</a> → 코코포리아 룸에 입장</li>
-          <li>룸 화면에서 북마크바의 <b>스탠딩 가져오기</b> 클릭</li>
-          <li>뜬 창에서 <b>복사하고 닫기</b> → 아래 칸에 붙여넣고 <b>적용</b></li>
-        </ol>
-        <div class="buttons">
-          <a class="btn bookmarklet" id="bookmarklet" href="#">스탠딩 가져오기</a>
-          <button class="secondary small" id="btnCopyBm">북마크 코드 복사</button>
+<main id="app" data-view="settings">
+  <aside id="panel" aria-label="설정">
+    <div class="panel-scroll">
+      <details class="card" open>
+        <summary><span class="num">1</span><h2>불러오기</h2></summary>
+        <div id="drop" tabindex="0" role="button" aria-label="로그 파일 선택">
+          <strong>로그 파일을 끌어다 놓거나 클릭</strong>
+          코코포리아 → 룸 메뉴 → 로그 출력 (.html)
         </div>
+        <input type="file" id="file" accept=".html,.htm,.txt,.json" hidden />
+        <div id="fileName"></div>
+        <button type="button" class="ghost small" id="btnSample2" style="padding-left:0">처음이라면 → 예시 로그로 체험해보기</button>
 
-        <h3>방법 B · 캐릭터를 하나씩 복사하기</h3>
-        <ol class="steps">
-          <li>코코포리아에서 캐릭터 말(코마)을 우클릭 → <b>복사</b></li>
-          <li>아래 칸에 붙여넣기 (여러 명이면 이어서 계속 붙여넣기) → <b>적용</b></li>
-        </ol>
-        <textarea id="importText" rows="3" style="margin-top:4px" placeholder="여기에 붙여넣기"></textarea>
-        <div class="buttons" style="margin-top:6px"><button class="small" id="btnImport">적용</button></div>
-        <p class="hint">이미지 주소를 알고 있으면 아래 <b>5. 캐릭터</b>에서 직접 넣을 수도 있어요.</p>
+        <div class="divider">또는 · 그리고</div>
+        <div class="stack"><span>룸 링크로 스탠딩 · 표정 불러오기</span>
+          <input type="url" id="roomUrl" placeholder="https://ccfolia.com/rooms/..." />
+        </div>
+        <label class="row"><input type="checkbox" id="roomWithLog" checked /> 채팅 기록도 가져오기</label>
+        <p class="hint" style="margin:0 0 8px 28px">로그 파일이 있으면 대사마다 <b>실제로 쓴 표정</b>을 연결하고, 없으면 룸 채팅으로 로그를 만들어요.</p>
+        <div class="buttons">
+          <button id="btnLoadRoom">룸에서 불러오기</button>
+          <span id="roomStatus" class="hint" style="margin:0"></span>
+        </div>
+        <p class="hint" id="libInfo"></p>
+        <p class="hint">코코포리아 공식 기능이 아니라서 갑자기 안 될 수 있어요. 그럴 땐 아래 다른 방법을 써주세요.
+          대사 안에 <code>@표정이름</code>이 있으면 그 표정이 연결돼요.</p>
+
+        <details class="sub" id="altMethods">
+          <summary>링크로 안 될 때 · 다른 방법</summary>
+          <h3 style="font-size:14px;margin:4px 0 6px">방법 A · 북마크로 가져오기 (PC 크롬·엣지)</h3>
+          <ol class="steps">
+            <li>노란 버튼을 <b>마우스로 끌어서 북마크바에 놓기</b> (처음 한 번만)<br />
+              <span class="hint">북마크바가 안 보이면 <code>Ctrl+Shift+B</code></span></li>
+            <li><a href="#" id="openRoom">룸 열기</a> → 코코포리아 룸에 입장</li>
+            <li>룸 화면에서 북마크바의 <b>스탠딩 가져오기</b> 클릭</li>
+            <li>뜬 창에서 <b>복사하고 닫기</b> → 아래 칸에 붙여넣고 <b>적용</b></li>
+          </ol>
+          <div class="buttons">
+            <a class="btn bookmarklet small" id="bookmarklet" href="#">스탠딩 가져오기</a>
+            <button class="secondary small" id="btnCopyBm">북마크 코드 복사</button>
+          </div>
+          <h3 style="font-size:14px;margin:14px 0 6px">방법 B · 캐릭터를 하나씩 복사하기</h3>
+          <ol class="steps">
+            <li>코코포리아에서 캐릭터 말(코마)을 우클릭 → <b>복사</b></li>
+            <li>아래 칸에 붙여넣기 (여러 명이면 이어서 계속) → <b>적용</b></li>
+          </ol>
+          <textarea id="importText" rows="3" placeholder="여기에 붙여넣기"></textarea>
+          <div class="buttons" style="margin-top:6px"><button class="small" id="btnImport">적용</button></div>
+        </details>
       </details>
-    </section>
 
-    <section class="card">
-      <h2>3. 스타일</h2>
-      <div class="field"><span>레이아웃</span>
-        <select id="optLayout">
-          <option value="bubble">채팅 (말풍선)</option>
-          <option value="script">대본</option>
-          <option value="classic">깔끔한 한 줄</option>
-        </select>
-      </div>
-      <div class="field"><span>배경</span>
-        <select id="optTheme">
-          <option value="light">밝게</option>
-          <option value="dark">어둡게</option>
-          <option value="sepia">종이</option>
-        </select>
-      </div>
-      <div class="field"><span>글자 크기</span><input type="number" id="optFont" min="10" max="24" value="15" /></div>
-      <div class="field"><span>제목</span><input type="text" id="optTitle" placeholder="(파일 이름에서 자동)" /></div>
-      <div class="field"><span>아이콘</span>
-        <select id="optIcon">
-          <option value="circle">동그라미</option>
-          <option value="square">둥근 네모</option>
-          <option value="standing">스탠딩 (세로로 길게)</option>
-          <option value="none">표시 안 함</option>
-        </select>
-      </div>
-      <div class="field"><span>아이콘 크기</span><input type="number" id="optIconSize" min="24" max="160" value="48" /></div>
-      <div class="field"><span>나레이션</span>
-        <select id="optNarr">
-          <option value="prose">본문처럼</option>
-          <option value="center">가운데 정렬</option>
-          <option value="box">상자</option>
-        </select>
-      </div>
-      <label class="row"><input type="checkbox" id="optShowTab" checked /> 탭 이름 표시</label>
-      <label class="row"><input type="checkbox" id="optMerge" checked /> 같은 사람의 연속 발언 묶기</label>
-      <label class="row"><input type="checkbox" id="optDice" checked /> 다이스 결과 강조</label>
-      <label class="row"><input type="checkbox" id="optMarkup" checked /> 꾸밈 문법 사용 (<code>*기울임*</code> 등)</label>
-      <label class="row"><input type="checkbox" id="optParen" /> 괄호 ( ) 속 문장 흐리게</label>
-      <label class="row"><input type="checkbox" id="optSticky" checked /> 표정은 다음 @태그 전까지 유지</label>
-      <label class="row"><input type="checkbox" id="optStripTag" checked /> 대사에서 @표정 태그 지우기</label>
-      <p class="hint">꾸밈 문법: <code>**굵게**</code> <code>*기울임*</code> <code>__밑줄__</code> <code>~~취소선~~</code> <code>{#e53935|색 글씨}</code> <code>{big|크게}</code> <code>{small|작게}</code></p>
-    </section>
+      <details class="card" open>
+        <summary><span class="num">2</span><h2>모양</h2></summary>
+        <div class="stack"><span>레이아웃</span>
+          <div class="seg full" role="radiogroup" aria-label="레이아웃">
+            <label><input type="radio" name="optLayout" value="bubble" checked /><span>💬 말풍선</span></label>
+            <label><input type="radio" name="optLayout" value="script" /><span>📜 대본</span></label>
+            <label><input type="radio" name="optLayout" value="classic" /><span>☰ 한 줄</span></label>
+          </div>
+        </div>
+        <div class="stack"><span>보는 사람 화면 (다크 / 라이트)</span>
+          <div class="seg full" role="radiogroup" aria-label="결과물 기본 모드">
+            <label><input type="radio" name="optMode" value="auto" checked /><span>자동</span></label>
+            <label><input type="radio" name="optMode" value="light" /><span>☀ 밝게</span></label>
+            <label><input type="radio" name="optMode" value="dark" /><span>🌙 어둡게</span></label>
+          </div>
+          <p class="hint" style="margin:0">자동은 보는 사람의 기기 설정(다크/라이트)을 따라가요.</p>
+        </div>
+        <div class="field"><span>밝은 배경</span>
+          <select id="optTheme">
+            <option value="light">흰색</option>
+            <option value="sepia">종이</option>
+            <option value="mint">민트</option>
+          </select>
+        </div>
+        <div class="field"><span>어두운 배경</span>
+          <select id="optDarkTheme">
+            <option value="dark">먹색</option>
+            <option value="navy">밤하늘</option>
+            <option value="black">검정</option>
+          </select>
+        </div>
+        <div class="stack"><span>아이콘</span>
+          <div class="seg full" role="radiogroup" aria-label="아이콘 모양">
+            <label><input type="radio" name="optIcon" value="circle" checked /><span>● 원</span></label>
+            <label><input type="radio" name="optIcon" value="square" /><span>■ 네모</span></label>
+            <label><input type="radio" name="optIcon" value="standing" /><span>▯ 스탠딩</span></label>
+            <label><input type="radio" name="optIcon" value="none" /><span>없음</span></label>
+          </div>
+        </div>
+        <div class="field"><span>아이콘 크기</span>
+          <div class="range"><input type="range" id="optIconSize" min="32" max="200" step="4" value="72" /><output id="optIconSizeOut">72px</output></div>
+        </div>
+        <div class="field"><span>글자 크기</span>
+          <div class="range"><input type="range" id="optFont" min="13" max="22" step="1" value="16" /><output id="optFontOut">16px</output></div>
+        </div>
+        <div class="field"><span>나레이션</span>
+          <select id="optNarr">
+            <option value="prose">본문처럼</option>
+            <option value="center">가운데 정렬</option>
+            <option value="box">상자</option>
+          </select>
+        </div>
+        <div class="field"><span>제목</span><input type="text" id="optTitle" placeholder="(파일 이름에서 자동)" /></div>
 
-    <section class="card" id="tabsCard" hidden>
-      <h2>4. 탭</h2>
-      <div class="chips" id="tabs"></div>
-      <p class="hint">체크를 해제한 탭의 메시지는 결과에서 빠집니다. (잡담 탭 제외 등)</p>
-      <p class="hint" id="deletedInfo" hidden></p>
-    </section>
+        <details class="sub">
+          <summary>세부 설정</summary>
+          <label class="row"><input type="checkbox" id="optShowTab" checked /> 탭 이름 표시</label>
+          <label class="row"><input type="checkbox" id="optMerge" checked /> 같은 사람의 연속 발언 묶기</label>
+          <label class="row"><input type="checkbox" id="optDice" checked /> 다이스 결과 강조</label>
+          <label class="row"><input type="checkbox" id="optContrast" checked /> 이름 색이 배경에 묻히지 않게 자동 보정</label>
+          <label class="row"><input type="checkbox" id="optToggle" checked /> 내려받은 HTML에 다크/라이트 전환 버튼 넣기</label>
+          <label class="row"><input type="checkbox" id="optMarkup" checked /> 꾸밈 문법 사용</label>
+          <label class="row"><input type="checkbox" id="optParen" /> 괄호 ( ) 속 문장 흐리게</label>
+          <label class="row"><input type="checkbox" id="optSticky" checked /> 표정은 다음 @태그 전까지 유지</label>
+          <label class="row"><input type="checkbox" id="optStripTag" checked /> 대사에서 @표정 태그 지우기</label>
+          <p class="hint">꾸밈 문법: <code>**굵게**</code> <code>*기울임*</code> <code>__밑줄__</code> <code>~~취소선~~</code> <code>{#e53935|색 글씨}</code> <code>{big|크게}</code> <code>{small|작게}</code></p>
+        </details>
+      </details>
 
-    <section class="card" id="charsCard" hidden>
-      <h2>5. 캐릭터</h2>
-      <div id="chars"></div>
-      <p class="hint">이름을 바꾸면 결과에도 반영돼요. 두 캐릭터에 같은 이름을 넣으면 한 사람으로 합쳐집니다.
-        <b>나레이션</b>에 체크한 화자는 아이콘과 이름 없이 본문처럼 표시돼요.</p>
-    </section>
+      <details class="card" id="tabsCard" open hidden>
+        <summary><span class="num">3</span><h2>탭</h2></summary>
+        <div class="chips" id="tabs"></div>
+        <p class="hint">체크를 끈 탭의 메시지는 결과에서 빠져요. (잡담 탭 빼기 등)</p>
+        <p class="hint" id="deletedInfo" hidden></p>
+      </details>
 
-    <section class="card">
-      <h2>6. 저장</h2>
+      <details class="card" id="charsCard" open hidden>
+        <summary><span class="num">4</span><h2>캐릭터</h2></summary>
+        <div id="chars"></div>
+        <p class="hint">이름을 바꾸면 결과에도 반영돼요. 두 캐릭터에 같은 이름을 넣으면 한 사람으로 합쳐져요.
+          <b>나레이션</b>에 체크한 화자는 아이콘과 이름 없이 본문처럼 나와요.</p>
+      </details>
+    </div>
+
+    <footer class="export-bar">
       <div class="buttons">
-        <button id="btnDownload" disabled>HTML 다운로드</button>
-        <button id="btnOpen" class="secondary" disabled>새 탭에서 열기</button>
-        <button id="btnCopyHtml" class="secondary" disabled>HTML 코드 복사</button>
+        <button id="btnDownload" disabled title="Ctrl+S">⬇ HTML 다운로드</button>
+        <button id="btnCopyTistory" class="secondary" disabled>티스토리용 코드 복사</button>
       </div>
-      <h3>티스토리 백업</h3>
-      <div class="buttons"><button id="btnCopyTistory" disabled>티스토리용 코드 복사</button></div>
-      <ol class="steps">
-        <li>티스토리 글쓰기 → 오른쪽 위 <b>기본모드</b>를 <b>HTML</b>로 바꾸기</li>
-        <li>복사한 코드를 붙여넣고 저장</li>
-      </ol>
-      <p class="hint">티스토리용 코드는 &lt;style&gt; 없이 모든 꾸밈을 태그 안에 직접 넣어서, 블로그 스킨이 바뀌어도 모양이 유지돼요.</p>
-    </section>
+      <details class="sub" style="margin-top:8px">
+        <summary>더 보기 · 티스토리에 올리는 법</summary>
+        <div class="buttons" style="margin-bottom:8px">
+          <button id="btnOpen" class="secondary small" disabled>새 탭에서 열기</button>
+          <button id="btnCopyHtml" class="secondary small" disabled>HTML 코드 복사</button>
+          <button id="btnExportWork" class="secondary small" disabled>작업 파일 저장</button>
+        </div>
+        <ol class="steps">
+          <li>티스토리 글쓰기 → 오른쪽 위 <b>기본모드</b>를 <b>HTML</b>로 바꾸기</li>
+          <li><b>티스토리용 코드 복사</b>로 복사한 코드를 붙여넣고 저장</li>
+        </ol>
+        <p class="hint">티스토리용 코드는 &lt;style&gt; 없이 꾸밈을 태그 안에 직접 넣어서 블로그 스킨이 바뀌어도 모양이 유지되고,
+          다크/라이트도 보는 사람 설정을 따라가요. <b>작업 파일</b>(.json)을 저장해 두면 나중에 끌어다 놓아 이어서 고칠 수 있어요.</p>
+      </details>
+      <p class="hint" id="saveState"></p>
+    </footer>
   </aside>
 
-  <div id="previewWrap">
-    <div id="previewBar">미리보기</div>
-    <div id="empty">왼쪽에서 로그 파일을 불러오면 여기에 미리보기가 나타납니다.<br /><br />
-      <button class="secondary" id="btnSample">예시 로그로 체험해보기</button>
+  <section id="previewWrap" aria-label="미리보기">
+    <div id="previewBar">
+      <span id="previewTitle">미리보기</span>
+      <div class="seg" role="radiogroup" aria-label="미리보기 모드">
+        <label><input type="radio" name="pvMode" value="light" /><span>☀ 밝게</span></label>
+        <label><input type="radio" name="pvMode" value="dark" /><span>🌙 어둡게</span></label>
+      </div>
+    </div>
+    <div id="empty">
+      <div class="inner">
+        <div class="big" aria-hidden="true">📜</div>
+        <h2>세션 로그를 예쁘게 바꿔볼까요?</h2>
+        <ol>
+          <li>코코포리아 로그 파일을 끌어다 놓거나</li>
+          <li>룸 링크를 넣고 <b>룸에서 불러오기</b></li>
+          <li>모양을 고르고 대사를 클릭해서 다듬기</li>
+          <li><b>HTML 다운로드</b> 또는 <b>티스토리용 코드 복사</b></li>
+        </ol>
+        <button class="secondary" id="btnSample">예시 로그로 체험해보기</button>
+      </div>
     </div>
     <iframe id="preview" hidden title="미리보기"></iframe>
-  </div>
+  </section>
 </main>
 
-<dialog id="editor">
+<nav class="tabbar" aria-label="화면 전환">
+  <button type="button" data-view="settings" aria-pressed="true">⚙ 설정</button>
+  <button type="button" data-view="preview" aria-pressed="false">👁 미리보기</button>
+</nav>
+
+<dialog id="editor" aria-labelledby="edTitle">
   <form method="dialog">
-    <h2>대사 수정</h2>
+    <h2 id="edTitle">대사 수정</h2>
     <div class="field"><span>화자</span><select id="edSpeaker"></select></div>
     <div class="field"><span>종류</span>
       <select id="edKind">
@@ -260,7 +447,7 @@
       </select>
     </div>
     <div>
-      <div style="margin-bottom:4px">표정</div>
+      <div style="margin-bottom:6px;font-size:13.5px;color:var(--muted);font-weight:600">표정</div>
       <div class="faceList" id="edFaces"></div>
     </div>
     <div class="toolbar">
@@ -273,12 +460,12 @@
       <input type="color" id="edColor" value="#e53935" title="글자색 고르기" />
       <button type="button" id="edColorBtn" title="고른 색 적용">색 적용</button>
     </div>
-    <textarea id="edText"></textarea>
-    <p class="hint" style="margin:0">글자를 드래그해서 고른 뒤 위 버튼을 누르면 꾸밈이 들어가요.</p>
+    <textarea id="edText" aria-label="대사 내용"></textarea>
+    <p class="hint" style="margin:0">글자를 드래그해서 고른 뒤 위 버튼을 누르면 꾸밈이 들어가요. <code>Ctrl+Enter</code>로 저장.</p>
     <div class="dialog-actions">
       <div class="buttons">
-        <button type="button" class="danger" id="edDelete">이 대사 삭제</button>
-        <button type="button" class="secondary" id="edReset">원래대로</button>
+        <button type="button" class="danger small" id="edDelete">이 대사 삭제</button>
+        <button type="button" class="secondary small" id="edReset">원래대로</button>
       </div>
       <div class="buttons">
         <button type="button" class="secondary" id="edCancel">취소</button>
@@ -288,7 +475,7 @@
   </form>
 </dialog>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button type="button" id="toastAction" hidden></button></div>
 
 <script>
 "use strict";
@@ -636,25 +823,41 @@ function findFaceTag(text, faces) {
 }
 
 /* ================================================================
- * 렌더러 – 모든 꾸밈을 인라인 style로 넣어서 티스토리에서도 그대로 보이게 한다
+ * 렌더러
+ * - 다운로드용 HTML: <style>의 CSS 변수 + @media로 다크/라이트를 모두 지원하고, 전환 버튼을 넣을 수 있다.
+ * - 티스토리용 코드: <style>을 쓸 수 없으므로 태그마다 인라인 style에
+ *   "옛 브라우저용 값; light-dark(밝은 값, 어두운 값)"을 함께 넣어 양쪽 모드를 지원한다.
  * ================================================================ */
 
-const THEMES = {
-  light: { bg: "#f4f4f6", paper: "#ffffff", text: "#222228", muted: "#8a8a93", line: "#e5e5ea" },
-  dark:  { bg: "#141418", paper: "#1f1f25", text: "#e8e8ee", muted: "#8d8d98", line: "#34343d" },
-  sepia: { bg: "#efe6d4", paper: "#fbf6ea", text: "#3b3226", muted: "#8f8069", line: "#e2d6bd" },
+const LIGHT_THEMES = {
+  light: { bg: "#f5f5f7", paper: "#ffffff", text: "#1f1f24", muted: "#6b6b75", line: "#e3e3e8" },
+  sepia: { bg: "#f1e9d8", paper: "#fbf7ec", text: "#3a3125", muted: "#76674f", line: "#e0d4bb" },
+  mint:  { bg: "#edf5f2", paper: "#ffffff", text: "#1d2b27", muted: "#586b65", line: "#d3e5dd" },
 };
-const GRADE_COLORS = { success: "#1e88e5", critical: "#e6a100", failure: "#9e9e9e", fumble: "#e53935", neutral: null };
+const DARK_THEMES = {
+  dark:  { bg: "#141417", paper: "#1f1f25", text: "#e9e9ef", muted: "#9d9da8", line: "#34343d" },
+  navy:  { bg: "#0f1626", paper: "#18213a", text: "#e6ebf5", muted: "#9aa5bf", line: "#2a3553" },
+  black: { bg: "#000000", paper: "#131313", text: "#ececec", muted: "#9c9c9c", line: "#2b2b2b" },
+};
+const GRADE_COLORS = {
+  success: ["#1565c0", "#64b5f6"], critical: ["#a15c00", "#ffcc4d"],
+  failure: ["#6b6b75", "#a3a3ad"], fumble: ["#c62828", "#ff7070"],
+};
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// {fontSize: "1em", color: ["#111", "light-dark(#111,#eee)"]} → 인라인 style 문자열.
+// 배열 값은 같은 속성을 여러 번 써서, 모르는 값을 무시하는 옛 브라우저가 앞의 값을 쓰게 한다.
 function css(o) {
-  return Object.entries(o)
-    .filter(([, v]) => v !== undefined && v !== null && v !== false && v !== "")
-    .map(([k, v]) => k.replace(/[A-Z]/g, c => "-" + c.toLowerCase()) + ":" + String(v).replace(/"/g, "'"))
-    .join(";");
+  const out = [];
+  for (const [k, v] of Object.entries(o)) {
+    if (v === undefined || v === null || v === false || v === "") continue;
+    const prop = k.replace(/[A-Z]/g, c => "-" + c.toLowerCase());
+    for (const x of Array.isArray(v) ? v : [v]) out.push(prop + ":" + String(x).replace(/"/g, "'"));
+  }
+  return out.join(";");
 }
 
 function mix(a, b, p) {
@@ -663,7 +866,25 @@ function mix(a, b, p) {
   return "#" + x.map((v, i) => Math.round(v * p + y[i] * (1 - p)).toString(16).padStart(2, "0")).join("");
 }
 
-function formatText(text, opts, t) {
+function luminance(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function contrast(a, b) {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+// 배경들과의 대비가 min(WCAG AA 4.5:1) 이상이 되도록 색을 조금씩 어둡게/밝게 한다.
+function ensureContrast(color, bgs, min = 4.5) {
+  const base = normalizeColor(color) || "#888888";
+  const toward = luminance(bgs[0]) > 0.4 ? "#000000" : "#ffffff";
+  let c = base;
+  for (let p = 0.92; p >= 0 && bgs.some(bg => contrast(c, bg) < min); p -= 0.08) c = mix(base, toward, p);
+  return c;
+}
+
+function formatText(text, opts, mutedColor) {
   let s = escapeHtml(text);
   if (opts.markup) {
     s = s
@@ -674,15 +895,39 @@ function formatText(text, opts, t) {
       .replace(/__(?!\s)(.+?)__/g, '<u style="text-decoration:underline">$1</u>')
       .replace(/~~(?!\s)(.+?)~~/g, '<s style="text-decoration:line-through">$1</s>');
   }
-  if (opts.paren) s = s.replace(/([(（][^()（）\n]*[)）])/g, `<span style="color:${t.muted}">$1</span>`);
+  if (opts.paren) s = s.replace(/([(（][^()（）\n]*[)）])/g, `<span style="${css({ color: mutedColor })}">$1</span>`);
   return s.replace(/\n/g, "<br>");
 }
 
 function buildOutput(settings, mode) {
   const { opts } = settings;
-  const t = THEMES[opts.theme] || THEMES.light;
+  const L = LIGHT_THEMES[opts.theme] || LIGHT_THEMES.light;
+  const D = DARK_THEMES[opts.darkTheme] || DARK_THEMES.dark;
+  const inline = mode === "tistory";
   const preview = mode === "preview";
+  const startDark = opts.mode === "dark";
   const items = resolveMessages(settings);
+
+  // 색 토큰: 페이지에서는 CSS 변수, 티스토리에서는 [옛 브라우저용 값, light-dark(밝음, 어두움)]
+  const tokens = {};
+  const def = (key, light, dark) => { tokens[key] = [light, dark]; return tok(key); };
+  const tok = key => {
+    const [l, d] = tokens[key];
+    if (!inline) return `var(--nb-${key})`;
+    return l === d ? l : [startDark ? d : l, `light-dark(${l}, ${d})`];
+  };
+  for (const k of Object.keys(L)) def(k, L[k], D[k]);
+  for (const [g, [l, d]] of Object.entries(GRADE_COLORS)) def("g-" + g, l, d);
+  const nameKeys = new Map();
+  const nameColor = color => {
+    const c = normalizeColor(color) || "#888888";
+    if (!nameKeys.has(c)) {
+      const light = opts.contrast ? ensureContrast(c, [L.bg, L.paper]) : c;
+      const dark = opts.contrast ? ensureContrast(c, [D.bg, D.paper]) : c;
+      nameKeys.set(c, def("n" + nameKeys.size, light, dark));
+    }
+    return nameKeys.get(c);
+  };
 
   // 연속 발언 묶기 (표정이 바뀌면 새 묶음)
   const groups = [];
@@ -694,120 +939,144 @@ function buildOutput(settings, mode) {
   }
 
   const pick = i => preview ? ` data-i="${i}"` : "";
-  const tabLabel = tab => !opts.showTab ? "" : `<span style="${css({
-    display: "inline-block", fontSize: ".68em", fontWeight: 400, color: t.muted, border: `1px solid ${t.line}`,
-    borderRadius: "999px", padding: "0 7px", margin: "0 6px", lineHeight: 1.6, verticalAlign: "middle",
+  const cls = name => inline ? "" : ` class="${name}"`;
+  const tabLabel = (tab, margin = "0 0 0 8px") => !opts.showTab ? "" : `<span style="${css({
+    display: "inline-block", fontSize: ".72em", fontWeight: 500, color: tok("muted"), border: "1px solid", borderColor: tok("line"), borderRadius: "999px", padding: "0 8px", margin, lineHeight: 1.7, verticalAlign: "middle", letterSpacing: 0,
   })}">${escapeHtml(tab)}</span>`;
 
   const dice = (m, color) => {
     const d = opts.dice && parseDice(m.text);
     if (!d) return null;
-    const gc = GRADE_COLORS[d.grade];
-    const arrow = `<span style="color:${t.muted}">›</span>`;
-    const steps = d.steps.map(s => `${arrow}<span style="color:${t.muted}">${escapeHtml(s)}</span>`).join("");
     const strong = d.grade === "critical" || d.grade === "fumble";
+    const gc = d.grade !== "neutral" ? tok("g-" + d.grade) : tok("text");
+    const muted = css({ color: tok("muted") });
+    const arrow = `<span style="${muted}">›</span>`;
+    const steps = d.steps.map(s => `${arrow}<span style="${muted}">${escapeHtml(s)}</span>`).join("");
     return `<span style="${css({
-      display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: "4px", fontSize: ".9em", padding: "4px 10px",
-      borderRadius: "8px", border: `1px solid ${strong ? gc : t.line}`, background: mix(color, t.paper, 0.08), lineHeight: 1.6,
-    })}"><b style="font-weight:700">🎲 ${escapeHtml(d.command)}</b>${steps}${arrow}<b style="${css({ fontWeight: 700, color: gc })}">${escapeHtml(d.result)}</b></span>`;
+      display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: "2px 6px", fontSize: ".92em", padding: "6px 12px",
+      borderRadius: "10px", border: "1px solid", borderColor: strong ? gc : tok("line"), background: tok("paper"),
+      borderLeft: `4px solid ${normalizeColor(color) || "#888888"}`, lineHeight: 1.6, maxWidth: "100%",
+    })}"><b style="font-weight:700">🎲 ${escapeHtml(d.command)}</b>${steps}${arrow}<b style="${css({ fontWeight: 800, color: gc })}">${escapeHtml(d.result)}</b></span>`;
   };
-  const body = m => formatText(m.text, opts, t);
+  const body = m => formatText(m.text, opts, tok("muted"));
 
   const avatar = (g, size) => {
     if (opts.icon === "none") return "";
     const tall = opts.icon === "standing";
     const w = size, h = tall ? Math.round(size * 1.5) : size;
-    const radius = opts.icon === "circle" ? "50%" : tall ? "8px" : Math.round(size / 5) + "px";
+    const radius = opts.icon === "circle" ? "50%" : tall ? "12px" : Math.round(size / 4.5) + "px";
     const box = { display: "block", flex: "none", width: w + "px", height: h + "px", borderRadius: radius, margin: 0 };
+    const klass = cls("nb-av" + (tall ? " nb-tall" : ""));
     if (isImageUrl(g.face)) {
-      return `<img src="${escapeHtml(g.face)}" alt="" style="${css({ ...box, objectFit: "cover", objectPosition: "top center",
-        maxWidth: "none", border: 0, padding: 0, background: t.paper, boxShadow: "none" })}">`;
+      return `<img${klass} src="${escapeHtml(g.face)}" alt="${escapeHtml(g.name)}" loading="lazy" style="${css({ ...box, objectFit: "cover", objectPosition: "top center",
+        maxWidth: "none", border: "1px solid", borderColor: tok("line"), padding: 0, background: tok("paper"), boxShadow: "none" })}">`;
     }
     const initial = [...g.name][0] || "?";
-    return `<div style="${css({ ...box, background: g.color, color: "#fff", fontWeight: 700, fontSize: Math.round(size * 0.42) + "px",
-      lineHeight: h + "px", textAlign: "center" })}">${escapeHtml(initial)}</div>`;
+    return `<div${klass} aria-hidden="true" style="${css({ ...box, background: normalizeColor(g.color) || "#888888", color: "#fff", fontWeight: 700,
+      fontSize: Math.round(size * 0.42) + "px", lineHeight: h + "px", textAlign: "center" })}">${escapeHtml(initial)}</div>`;
   };
   const isSystem = g => /^(system|システム|시스템)$/i.test(g.name);
-  const nameStyle = g => css({ fontWeight: 700, color: isSystem(g) ? t.muted : g.color });
+  const nameStyle = g => css({ fontWeight: 700, color: isSystem(g) ? tok("muted") : nameColor(g.color) });
+  const groupAttrs = g => `${cls("nb-g")}${pick(g.items[0].i)}`;
 
   const narration = g => {
     const style = {
-      prose: { margin: "18px 0", padding: "0 4px" },
-      center: { margin: "22px 0", padding: "0 24px", textAlign: "center" },
-      box: { margin: "18px 0", padding: "12px 18px", background: t.paper, border: `1px solid ${t.line}`, borderRadius: "10px" },
+      prose: { margin: "22px 0", padding: "0 4px" },
+      center: { margin: "26px 0", padding: "0 24px", textAlign: "center" },
+      box: { margin: "22px 0", padding: "14px 20px", background: tok("paper"), border: "1px solid", borderColor: tok("line"), borderRadius: "14px" },
     }[opts.narr] || {};
-    return `<div style="${css({ ...style, lineHeight: 1.9, wordBreak: "break-word" })}"${pick(g.items[0].i)}>`
-      + g.items.map(m => `<div${pick(m.i)}>${dice(m, g.color) || body(m)}</div>`).join("") + "</div>";
+    return `<div${groupAttrs(g)} style="${css({ ...style, lineHeight: 1.9 })}">`
+      + g.items.map((m, k) => `<div style="${css({ marginTop: k ? ".5em" : 0 })}"${pick(m.i)}>${dice(m, g.color) || body(m)}</div>`).join("") + "</div>";
   };
 
   const renderGroup = g => {
     if (g.narration) return narration(g);
-    const sys = isSystem(g) ? { opacity: 0.75, fontSize: ".9em" } : {};
+    const sys = isSystem(g) ? { opacity: 0.8, fontSize: ".92em" } : {};
 
     if (opts.layout === "script") {
-      const size = Math.round(opts.iconSize * 0.8);
-      return `<div style="${css({ display: "flex", flexWrap: "wrap", gap: "4px 16px", padding: "8px 0", ...sys })}"${pick(g.items[0].i)}>`
-        + `<div style="${css({ flex: "0 0 8.5em", textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" })}">`
+      const size = opts.iconSize;
+      return `<div${groupAttrs(g)} style="${css({ display: "flex", flexWrap: "wrap", gap: "6px 20px", padding: "10px 0", ...sys })}">`
+        + `<div style="${css({ flex: `0 0 ${Math.max(9, Math.round(size / 14))}em`, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", textAlign: "right" })}">`
         + avatar(g, size)
-        + `<div style="${nameStyle(g)}">${escapeHtml(g.name)}</div>${opts.showTab ? `<div>${tabLabel(g.tab)}</div>` : ""}</div>`
-        + `<div style="${css({ flex: "1 1 14em", minWidth: 0, wordBreak: "break-word" })}">`
-        + g.items.map((m, k) => `<div style="${css({ marginTop: k ? "4px" : 0 })}"${pick(m.i)}>${dice(m, g.color) || body(m)}</div>`).join("")
+        + `<div style="${nameStyle(g)}">${escapeHtml(g.name)}</div>${opts.showTab ? `<div>${tabLabel(g.tab, "0")}</div>` : ""}</div>`
+        + `<div style="${css({ flex: "1 1 16em", minWidth: 0, paddingTop: "2px" })}">`
+        + g.items.map((m, k) => `<div style="${css({ marginTop: k ? ".5em" : 0 })}"${pick(m.i)}>${dice(m, g.color) || body(m)}</div>`).join("")
         + "</div></div>";
     }
 
     if (opts.layout === "classic") {
-      const size = Math.min(opts.iconSize, 36);
-      return `<div style="${css({ display: "flex", gap: "10px", alignItems: "flex-start", padding: "8px 0", borderBottom: `1px dashed ${t.line}`, ...sys })}"${pick(g.items[0].i)}>`
+      const size = Math.max(28, Math.round(opts.iconSize * 0.6));
+      return `<div${groupAttrs(g)} style="${css({ display: "flex", gap: "12px", alignItems: "flex-start", padding: "12px 0", borderBottom: "1px dashed", borderColor: tok("line"), ...sys })}">`
         + avatar(g, size)
-        + `<div style="${css({ flex: 1, minWidth: 0, wordBreak: "break-word" })}">`
-        + g.items.map((m, k) => `<div style="${css({ marginTop: k ? "4px" : 0 })}"${pick(m.i)}>`
-          + (k ? "" : `${tabLabel(g.tab).replace("margin:0 6px", "margin:0 6px 0 0")}<span style="${nameStyle(g)}">${escapeHtml(g.name)}</span><span style="color:${t.muted}"> : </span>`)
+        + `<div style="${css({ flex: 1, minWidth: 0 })}">`
+        + g.items.map((m, k) => `<div style="${css({ marginTop: k ? ".4em" : 0 })}"${pick(m.i)}>`
+          + (k ? "" : `<span style="${nameStyle(g)}">${escapeHtml(g.name)}</span>${tabLabel(g.tab, "0 0 0 6px")}<span style="${css({ color: tok("muted") })}"> : </span>`)
           + (dice(m, g.color) || body(m)) + "</div>").join("")
         + "</div></div>";
     }
 
-    // bubble
-    return `<div style="${css({ display: "flex", gap: "12px", alignItems: "flex-start", margin: "16px 0", ...sys })}"${pick(g.items[0].i)}>`
+    // 말풍선
+    return `<div${groupAttrs(g)} style="${css({ display: "flex", gap: "14px", alignItems: "flex-start", margin: "20px 0", ...sys })}">`
       + avatar(g, opts.iconSize)
       + `<div style="${css({ flex: 1, minWidth: 0 })}">`
-      + `<div style="${css({ fontSize: ".85em", marginBottom: "2px" })}"><span style="${nameStyle(g)}">${escapeHtml(g.name)}</span>${tabLabel(g.tab)}</div>`
+      + `<div style="${css({ fontSize: ".92em", margin: "2px 0 4px" })}"><span style="${nameStyle(g)}">${escapeHtml(g.name)}</span>${tabLabel(g.tab)}</div>`
       + g.items.map(m => {
-        const d = dice(m, g.color);
-        const inner = d || `<div style="${css({
-          display: "inline-block", maxWidth: "100%", background: t.paper, border: `1px solid ${t.line}`,
-          borderLeft: `3px solid ${isSystem(g) ? t.muted : g.color}`, borderRadius: "4px 14px 14px 14px",
-          padding: "6px 12px", wordBreak: "break-word", textAlign: "left",
+        const inner = dice(m, g.color) || `<div style="${css({
+          display: "inline-block", maxWidth: "100%", background: tok("paper"), border: "1px solid", borderColor: tok("line"),
+          borderLeft: `4px solid ${isSystem(g) ? "#9a9aa5" : normalizeColor(g.color) || "#888888"}`, borderRadius: "4px 18px 18px 18px",
+          padding: "9px 16px", textAlign: "left",
         })}">${body(m)}</div>`;
-        return `<div style="margin-top:4px"${pick(m.i)}>${inner}</div>`;
+        return `<div style="margin-top:6px"${pick(m.i)}>${inner}</div>`;
       }).join("")
       + "</div></div>";
   };
 
   const title = escapeHtml(opts.title || "세션 로그");
   const script = opts.layout === "script";
-  const inner = `<div style="${css({ textAlign: "center", fontSize: "1.5em", fontWeight: 700, margin: "0 0 4px", lineHeight: 1.4 })}">${title}</div>`
-    + `<div style="${css({ textAlign: "center", color: t.muted, fontSize: ".8em", marginBottom: "24px" })}">${items.length}개의 메시지</div>`
-    + groups.map(renderGroup).join("\n");
+  const content = groups.map(renderGroup).join("\n");
+  const inner = `<div style="${css({ textAlign: "center", fontSize: "1.6em", fontWeight: 800, margin: "0 0 6px", lineHeight: 1.35, letterSpacing: "-0.02em", textWrap: "balance" })}">${title}</div>`
+    + `<div style="${css({ textAlign: "center", color: tok("muted"), fontSize: ".85em", marginBottom: "28px" })}">${items.length}개의 메시지</div>`
+    + content;
 
-  const root = `<div style="${css({
-    background: t.bg, color: t.text, fontSize: opts.font + "px", lineHeight: 1.7, textAlign: "left",
-    fontFamily: '"Pretendard","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic","Hiragino Sans",sans-serif',
-    padding: mode === "tistory" ? "28px 16px" : "32px 16px 64px", borderRadius: mode === "tistory" ? "12px" : "",
+  const root = `<div${cls("nb-root")} style="${css({
+    colorScheme: inline ? (opts.mode === "auto" ? "light dark" : opts.mode) : "",
+    background: tok("bg"), color: tok("text"), fontSize: opts.font + "px", lineHeight: 1.75, textAlign: "left",
+    letterSpacing: "-0.01em", wordBreak: "keep-all", overflowWrap: "anywhere",
+    fontFamily: "'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif",
+    padding: inline ? "32px 18px" : "40px 18px 72px", borderRadius: inline ? "16px" : "",
   })}"><div style="${css({
-    maxWidth: script ? "820px" : "780px", margin: "0 auto",
-    ...(script ? { background: t.paper, border: `1px solid ${t.line}`, borderRadius: "12px", padding: "36px 28px" } : {}),
+    maxWidth: script ? "860px" : "800px", margin: "0 auto",
+    ...(script ? { background: tok("paper"), border: "1px solid", borderColor: tok("line"), borderRadius: "16px", padding: "40px 28px" } : {}),
   })}">\n${inner}\n</div></div>`;
 
   // 티스토리 편집기가 줄바꿈을 <p>로 바꾸지 않도록 한 줄로
-  if (mode === "tistory") return root.replace(/\n/g, "");
+  if (inline) return root.replace(/\n/g, "");
 
-  const previewCss = preview
-    ? "<style>[data-i]{cursor:pointer}[data-i]:hover{outline:2px dashed #a29bfe;outline-offset:2px;border-radius:6px}</style>" : "";
+  const vars = side => Object.entries(tokens).map(([k, v]) => `--nb-${k}:${v[side]}`).join(";");
+  const pageCss = `:root{color-scheme:light;${vars(0)}}`
+    + `@media (prefers-color-scheme:dark){:root:not([data-nb-theme=light]){color-scheme:dark;${vars(1)}}}`
+    + `:root[data-nb-theme=dark]{color-scheme:dark;${vars(1)}}`
+    + `html,body{margin:0;background:var(--nb-bg)}`
+    + `.nb-g{content-visibility:auto;contain-intrinsic-size:auto 120px}`
+    + `@media (max-width:600px){.nb-av{width:min(56px,100%)!important;height:56px!important}.nb-av.nb-tall{height:84px!important}.nb-root{padding-left:12px!important;padding-right:12px!important}}`
+    + `.nb-toggle{position:fixed;top:14px;right:14px;z-index:9;width:44px;height:44px;border-radius:50%;border:1px solid var(--nb-line);background:var(--nb-paper);color:var(--nb-text);font-size:20px;cursor:pointer;box-shadow:0 2px 10px rgb(0 0 0/.15)}`
+    + (preview ? "[data-i]{cursor:pointer}[data-i]:hover{outline:2px dashed #8b7cff;outline-offset:3px;border-radius:8px}" : "");
+  const htmlTheme = preview ? opts.previewScheme : (opts.mode === "auto" ? "" : opts.mode);
+  const toggle = !preview && opts.toggle
+    ? `<button class="nb-toggle" type="button" aria-label="다크/라이트 전환" title="다크/라이트 전환">◐</button>`
+      + `<script>(function(){var r=document.documentElement,k="nb-theme:"+location.pathname;try{var s=localStorage.getItem(k);if(s)r.dataset.nbTheme=s}catch(e){}`
+      + `document.querySelector(".nb-toggle").onclick=function(){var c=r.dataset.nbTheme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");`
+      + `var n=c==="dark"?"light":"dark";r.dataset.nbTheme=n;try{localStorage.setItem(k,n)}catch(e){}}})()<\/script>`
+    : "";
   return `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title>${previewCss}</head>
-<body style="margin:0;background:${t.bg}">
+<html lang="ko"${htmlTheme ? ` data-nb-theme="${htmlTheme}"` : ""}><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="${htmlTheme || "light dark"}">
+<title>${title}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>${pageCss}</style></head>
+<body>
 ${root}
+${toggle}
 </body></html>`;
 }
 
@@ -818,34 +1087,47 @@ ${root}
 const $ = id => document.getElementById(id);
 const state = { messages: [], fileTitle: "", tabs: {}, chars: {}, library: [], roomMessages: [] };
 
+const radio = name => document.querySelector(`input[name="${name}"]:checked`)?.value;
+
 function readOpts() {
   const num = (id, lo, hi, d) => Math.min(hi, Math.max(lo, +$(id).value || d));
   return {
-    layout: $("optLayout").value,
+    layout: radio("optLayout") || "bubble",
+    mode: radio("optMode") || "auto",
     theme: $("optTheme").value,
-    font: num("optFont", 10, 24, 15),
+    darkTheme: $("optDarkTheme").value,
+    font: num("optFont", 12, 24, 16),
     title: $("optTitle").value.trim() || state.fileTitle,
-    icon: $("optIcon").value,
-    iconSize: num("optIconSize", 24, 160, 48),
+    icon: radio("optIcon") || "circle",
+    iconSize: num("optIconSize", 32, 200, 72),
     narr: $("optNarr").value,
     showTab: $("optShowTab").checked,
     merge: $("optMerge").checked,
     dice: $("optDice").checked,
+    contrast: $("optContrast").checked,
+    toggle: $("optToggle").checked,
     markup: $("optMarkup").checked,
     paren: $("optParen").checked,
     sticky: $("optSticky").checked,
     stripTag: $("optStripTag").checked,
+    previewScheme: previewScheme(),
   };
 }
 
 const settings = () => ({ opts: readOpts(), tabs: state.tabs, chars: state.chars, library: state.library });
 
-function toast(msg) {
-  const el = $("toast");
-  el.textContent = msg;
+// 알림. action을 주면 "되돌리기" 같은 버튼이 붙고 조금 더 오래 보인다.
+function toast(msg, action) {
+  const el = $("toast"), btn = $("toastAction");
+  $("toastMsg").textContent = msg;
+  btn.hidden = !action;
+  if (action) {
+    btn.textContent = action.label;
+    btn.onclick = () => { el.classList.remove("show"); action.run(); };
+  }
   el.classList.add("show");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => el.classList.remove("show"), 2200);
+  toast.timer = setTimeout(() => el.classList.remove("show"), action ? 6000 : 2600);
 }
 
 async function copyText(text, msg) {
@@ -904,7 +1186,7 @@ function loadMessages(messages, title, sourceLabel) {
 
   $("tabsCard").hidden = false;
   $("charsCard").hidden = false;
-  for (const id of ["btnDownload", "btnOpen", "btnCopyHtml", "btnCopyTistory"]) $(id).disabled = false;
+  for (const id of ["btnDownload", "btnOpen", "btnCopyHtml", "btnCopyTistory", "btnExportWork"]) $(id).disabled = false;
   $("empty").hidden = true;
   $("preview").hidden = false;
   update({ keepScroll: false });
@@ -944,23 +1226,23 @@ function renderChars() {
     const lib = state.library[c.libId];
     const thumbUrl = c.iconUrl || lib?.iconUrl || lib?.faces[0]?.iconUrl || "";
     const el = document.createElement("div");
-    el.className = "char" + (c.narration ? " narr" : "");
+    el.className = "char" + (c.narration ? " narr" : "") + (c.visible ? "" : " off");
     el.innerHTML = `
+      ${thumbUrl ? '<img class="thumb" alt="">' : '<div class="thumb" aria-hidden="true"></div>'}
       <div class="char-row">
-        <input type="checkbox" class="vis" title="표시">
-        <input type="color" class="col" title="색">
-        <input type="text" class="ren" title="표시할 이름">
-        <span class="count">${c.count}</span>
+        <input type="text" class="ren" aria-label="표시할 이름">
+        <input type="color" class="col" aria-label="이름 색">
+        <span class="count">${c.count}줄</span>
       </div>
       <div class="char-row">
-        <img class="thumb" alt="" ${thumbUrl ? "" : "hidden"}>
-        <select class="lib"><option value="-1">스탠딩 없음</option></select>
+        <select class="lib" aria-label="스탠딩"><option value="-1">스탠딩 없음</option></select>
+      </div>
+      <div class="char-row">
+        <label><input type="checkbox" class="vis"> 보이기</label>
         <label><input type="checkbox" class="nar"> 나레이션</label>
       </div>
-      <div class="char-row">
-        <input type="url" class="url" placeholder="기본 이미지 주소 직접 입력 (선택)">
-      </div>
-      <div class="faces"></div>`;
+      <div class="faces"></div>
+      <input type="url" class="url" placeholder="기본 이미지 주소 직접 넣기 (선택)">`;
     const q = s => el.querySelector(s);
     q(".vis").checked = c.visible;
     q(".col").value = c.color;
@@ -968,12 +1250,13 @@ function renderChars() {
     q(".nar").checked = c.narration;
     q(".url").value = c.iconUrl;
     if (thumbUrl) q(".thumb").src = thumbUrl;
+    else { q(".thumb").textContent = [...(c.rename || name)][0] || "?"; q(".thumb").style.background = c.color; }
     state.library.forEach((l, i) => q(".lib").add(new Option(l.name, i)));
     q(".lib").value = String(c.libId);
     const faces = lib?.faces.map(f => faceLabel(f.label)).filter(Boolean) || [];
     q(".faces").textContent = faces.length ? "표정: " + faces.map(f => "@" + f).join(" ") : "";
 
-    q(".vis").addEventListener("change", e => { c.visible = e.target.checked; update(); });
+    q(".vis").addEventListener("change", e => { c.visible = e.target.checked; el.classList.toggle("off", !c.visible); update(); });
     q(".col").addEventListener("input", e => { c.color = e.target.value; update(); });
     q(".ren").addEventListener("input", e => { c.rename = e.target.value === name ? "" : e.target.value; update(); });
     q(".nar").addEventListener("change", e => { c.narration = e.target.checked; el.classList.toggle("narr", c.narration); update(); });
@@ -1009,23 +1292,28 @@ function applyLibrary(list, silent) {
 
 let pending = 0;
 let savedScroll = 0;
+// 설정을 연달아 바꿀 때 미리보기를 매번 다시 그리지 않도록 잠깐 모았다가 한 번에 그린다
 function update({ keepScroll = true } = {}) {
-  cancelAnimationFrame(pending);
-  pending = requestAnimationFrame(() => {
+  clearTimeout(pending);
+  pending = setTimeout(() => {
+    scheduleSave();
     if (!state.messages.length) return;
     const frame = $("preview");
     savedScroll = keepScroll ? (frame.contentWindow?.scrollY || 0) : 0;
+    const opts = readOpts();
+    frame.style.colorScheme = opts.previewScheme;
     frame.srcdoc = buildOutput(settings(), "preview");
-    $("previewBar").textContent = `미리보기 · ${readOpts().title} · 대사를 클릭하면 수정할 수 있어요`;
+    $("previewTitle").textContent = `${opts.title} · 대사를 클릭하면 수정할 수 있어요`;
     const deleted = state.messages.filter(m => m.e.hidden).length;
     $("deletedInfo").hidden = !deleted;
     $("deletedInfo").innerHTML = `삭제한 대사 ${deleted}개 · <a href="#" id="restoreAll">모두 되살리기</a>`;
-  });
+  }, 120);
 }
 
 $("preview").addEventListener("load", () => {
   const win = $("preview").contentWindow;
   win.scrollTo(0, savedScroll);
+  win.document.addEventListener("keydown", saveShortcut);
   win.document.addEventListener("click", e => {
     const el = e.target.closest("[data-i]");
     if (el) { e.preventDefault(); openEditor(+el.dataset.i); }
@@ -1109,17 +1397,20 @@ $("edSave").addEventListener("click", () => {
   update();
 });
 $("edCancel").addEventListener("click", () => $("editor").close());
-$("edReset").addEventListener("click", () => {
-  state.messages[editing].e = {};
+$("edText").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("edSave").click(); }
+});
+// 확인 창 대신 "되돌리기"를 제공한다
+function changeWithUndo(i, next, msg) {
+  const m = state.messages[i];
+  const before = { ...m.e };
+  m.e = next(m.e);
   $("editor").close();
   update();
-});
-$("edDelete").addEventListener("click", () => {
-  state.messages[editing].e.hidden = true;
-  $("editor").close();
-  update();
-  toast("대사를 삭제했어요 (탭 목록 아래에서 되살릴 수 있어요)");
-});
+  toast(msg, { label: "되돌리기", run: () => { m.e = before; update(); } });
+}
+$("edReset").addEventListener("click", () => changeWithUndo(editing, () => ({}), "대사를 원래대로 돌렸어요"));
+$("edDelete").addEventListener("click", () => changeWithUndo(editing, e => ({ ...e, hidden: true }), "대사를 삭제했어요"));
 
 /* ---------------- 파일 입력 ---------------- */
 
@@ -1131,6 +1422,10 @@ async function readFile(file) {
     try { text = new TextDecoder("shift_jis").decode(buf); } catch (_) {}
   }
   if (/\.json$/i.test(file.name)) {
+    try {
+      const data = JSON.parse(text);
+      if (data?.kind === "nabicoco-work") { restoreWork(data); toast("작업 파일을 불러왔어요"); return; }
+    } catch (_) {}
     try { applyLibrary(parseLibrary(text)); } catch (err) { alert(err.message); }
     return;
   }
@@ -1378,19 +1673,171 @@ async function loadRoom() {
 
 /* ---------------- 옵션 · 저장 ---------------- */
 
-["optLayout", "optTheme", "optFont", "optTitle", "optIcon", "optIconSize", "optNarr", "optShowTab", "optMerge",
-  "optDice", "optMarkup", "optParen", "optSticky", "optStripTag"].forEach(id => $(id).addEventListener("input", () => update()));
+const RADIO_OPTS = ["optLayout", "optMode", "optIcon"];
 
-const fileName = () => (readOpts().title || "log").replace(/[\\/:*?"<>|]/g, "_") + ".html";
-$("btnDownload").addEventListener("click", () => {
-  const blob = new Blob([buildOutput(settings(), "page")], { type: "text/html;charset=utf-8" });
+function syncOutputs() {
+  $("optFontOut").textContent = $("optFont").value + "px";
+  $("optIconSizeOut").textContent = $("optIconSize").value + "px";
+}
+
+$("panel").addEventListener("input", e => {
+  const key = e.target.id || e.target.name || "";
+  if (!key.startsWith("opt")) return;
+  if (key === "optMode") pvManual = false;
+  syncOutputs();
+  update();
+});
+
+function formState() {
+  const o = {};
+  for (const el of $("panel").querySelectorAll("[id^=opt]")) {
+    if (el.tagName === "OUTPUT") continue;
+    o[el.id] = el.type === "checkbox" ? el.checked : el.value;
+  }
+  for (const n of RADIO_OPTS) o[n] = radio(n);
+  return o;
+}
+
+function applyForm(o) {
+  for (const [k, v] of Object.entries(o || {})) {
+    if (RADIO_OPTS.includes(k)) {
+      const r = document.querySelector(`input[name="${k}"][value="${v}"]`);
+      if (r) r.checked = true;
+    } else if ($(k) && $(k).tagName !== "OUTPUT") {
+      if ($(k).type === "checkbox") $(k).checked = !!v; else $(k).value = v;
+    }
+  }
+  syncOutputs();
+}
+
+/* ---------------- 화면 테마 (시스템 / 라이트 / 다크) ---------------- */
+
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+const appScheme = () => document.documentElement.dataset.theme || (darkQuery.matches ? "dark" : "light");
+let pvManual = false;
+
+// 미리보기 모드: 직접 고른 값 > 결과물 기본 모드 > 지금 화면 테마
+function previewScheme() {
+  if (pvManual && radio("pvMode")) return radio("pvMode");
+  const mode = radio("optMode");
+  const scheme = mode === "light" || mode === "dark" ? mode : appScheme();
+  const r = document.querySelector(`input[name="pvMode"][value="${scheme}"]`);
+  if (r) r.checked = true;
+  return scheme;
+}
+
+function applyAppTheme(value) {
+  const root = document.documentElement;
+  if (value === "light" || value === "dark") root.dataset.theme = value;
+  else delete root.dataset.theme;
+  try {
+    if (value === "light" || value === "dark") localStorage.setItem("nabicoco-theme", value);
+    else localStorage.removeItem("nabicoco-theme");
+  } catch (_) {}
+  update();
+}
+document.querySelectorAll('input[name="appTheme"]').forEach(r => {
+  if (r.value === (document.documentElement.dataset.theme || "system")) r.checked = true;
+  r.addEventListener("change", () => applyAppTheme(r.value));
+});
+darkQuery.addEventListener("change", () => update());
+document.querySelectorAll('input[name="pvMode"]').forEach(r => r.addEventListener("change", () => { pvManual = true; update(); }));
+
+/* ---------------- 모바일: 설정 / 미리보기 전환 ---------------- */
+
+function setView(view) {
+  $("app").dataset.view = view;
+  document.querySelectorAll(".tabbar button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+}
+document.querySelectorAll(".tabbar button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+
+/* ---------------- 자동 저장 · 작업 파일 ---------------- */
+
+const WORK_KEY = "nabicoco-work";
+let saveTimer = 0;
+
+function workSnapshot() {
+  return {
+    kind: "nabicoco-work", v: 1, savedAt: Date.now(),
+    fileTitle: state.fileTitle, source: $("fileName").textContent.split(" · ")[0],
+    messages: state.messages, tabs: state.tabs, chars: state.chars, library: state.library, form: formState(),
+  };
+}
+
+function scheduleSave() {
+  if (!state.messages.length) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(WORK_KEY, JSON.stringify(workSnapshot()));
+      $("saveState").textContent = "✓ 이 브라우저에 자동 저장됨 · " + new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    } catch (_) {
+      $("saveState").textContent = "로그가 커서 자동 저장을 못 했어요. '작업 파일 저장'으로 보관해 주세요.";
+    }
+  }, 800);
+}
+
+function restoreWork(d) {
+  if (!d?.messages?.length) return;
+  state.library = d.library || [];
+  state.roomMessages = [];
+  applyForm(d.form);
+  loadMessages(d.messages.map(({ e, ...m }) => m), d.fileTitle || "", d.source || "이전 작업");
+  state.messages.forEach((m, i) => { m.e = d.messages[i].e || {}; });
+  for (const [name, c] of Object.entries(d.chars || {})) if (state.chars[name]) Object.assign(state.chars[name], c);
+  for (const label of $("tabs").children) {
+    const tab = label.querySelector("span").textContent;
+    state.tabs[tab] = d.tabs?.[tab] !== false;
+    label.querySelector("input").checked = state.tabs[tab];
+  }
+  renderChars();
+  update({ keepScroll: false });
+}
+
+(function offerRestore() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(WORK_KEY)); } catch (_) {}
+  if (!d?.messages?.length) return;
+  $("restoreText").textContent = `지난 작업이 남아 있어요 · ${d.fileTitle || "제목 없음"} · 메시지 ${d.messages.length}개`
+    + (d.savedAt ? ` · ${new Date(d.savedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "");
+  $("restoreBanner").hidden = false;
+  $("btnRestore").onclick = () => { restoreWork(d); $("restoreBanner").hidden = true; toast("지난 작업을 불러왔어요"); };
+  $("btnDiscard").onclick = () => {
+    try { localStorage.removeItem(WORK_KEY); } catch (_) {}
+    $("restoreBanner").hidden = true;
+  };
+})();
+
+$("btnExportWork").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(workSnapshot())], { type: "application/json" });
+  downloadBlob(blob, (readOpts().title || "log").replace(/[\\/:*?"<>|]/g, "_") + ".nabicoco.json");
+  toast("작업 파일을 저장했어요. 나중에 끌어다 놓으면 이어서 고칠 수 있어요");
+});
+
+function downloadBlob(blob, name) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = fileName();
+  a.download = name;
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// Ctrl+S (맥은 ⌘+S)로 HTML 다운로드
+function saveShortcut(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    if (!$("btnDownload").disabled) $("btnDownload").click();
+  }
+}
+document.addEventListener("keydown", saveShortcut);
+syncOutputs();
+
+const fileName = () => (readOpts().title || "log").replace(/[\\/:*?"<>|]/g, "_") + ".html";
+$("btnDownload").addEventListener("click", () => {
+  downloadBlob(new Blob([buildOutput(settings(), "page")], { type: "text/html;charset=utf-8" }), fileName());
+  toast("HTML 파일을 내려받았어요");
 });
 $("btnOpen").addEventListener("click", () => {
   const url = URL.createObjectURL(new Blob([buildOutput(settings(), "page")], { type: "text/html;charset=utf-8" }));
@@ -1428,13 +1875,15 @@ const SAMPLE = `<title>ココフォリア - 예시 세션</title>
 <p style="color:#888888;"><span> [other]</span><span>KP</span> :<span>(잠깐 화장실 다녀올게요)</span></p>
 <p style="color:#666666;"><span> [main]</span><span>KP</span> :<span>문 너머에서 희미하게 {#e53935|발소리}가 들립니다.</span></p>
 <p style="color:#666666;"><span> [main]</span><span>KP</span> :<span>1D6 (1D6) ＞ 4</span></p>`;
-$("btnSample").addEventListener("click", () => {
+function loadSample() {
   applyLibrary(SAMPLE_LIBRARY, true);
   loadSource(SAMPLE, "예시 로그.html");
   state.chars.KP.narration = true;
   renderChars();
   update();
-});
+}
+$("btnSample").addEventListener("click", loadSample);
+$("btnSample2").addEventListener("click", loadSample);
 </script>
 </body>
 </html>
