@@ -51,6 +51,8 @@
   .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.5; }
   .hint code, .steps code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
   ol.steps { margin: 6px 0; padding-left: 20px; line-height: 1.6; font-size: 13px; }
+  .notice { margin: 0 0 4px; padding: 8px 10px; border-radius: 8px; background: #fff4d6; color: #5c4400; font-size: 12.5px; line-height: 1.55; }
+  @media (prefers-color-scheme: dark) { .notice { background: #3a3120; color: #f3dfa8; } }
   .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
   button, a.btn {
     border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer;
@@ -121,24 +123,42 @@
 
     <section class="card">
       <h2>2. 스탠딩 · 표정 불러오기</h2>
-      <div class="field"><span>룸 링크</span>
-        <input type="url" id="roomUrl" placeholder="https://ccfolia.com/rooms/..." />
-      </div>
+      <p class="notice">⚠ 코코포리아는 룸에 들어간 사람만 캐릭터 정보를 볼 수 있게 막혀 있어서,
+        <b>링크를 붙여넣는 것만으로는 스탠딩을 가져올 수 없어요.</b> 아래 두 방법 중 하나로 가져와 주세요.</p>
+
+      <h3>방법 A · 북마크로 한 번에 가져오기 (PC 크롬·엣지)</h3>
       <ol class="steps">
-        <li>아래 노란 버튼을 <b>북마크바로 끌어다 놓기</b> (처음 한 번만)</li>
-        <li><a href="#" id="openRoom">룸 열기</a> → 룸 화면에서 그 북마크 클릭</li>
-        <li>뜨는 창의 내용을 복사해서 아래 칸에 붙여넣기</li>
+        <li>노란 버튼을 <b>마우스로 끌어서 북마크바에 놓기</b> (처음 한 번만)<br />
+          <span class="hint">북마크바가 안 보이면 <code>Ctrl+Shift+B</code></span></li>
+        <li>룸 링크를 넣고 <b>룸 열기</b> → 코코포리아 룸에 입장</li>
+        <li>룸 화면에서 북마크바의 <b>스탠딩 가져오기</b> 클릭</li>
+        <li>뜬 창에서 <b>복사하고 닫기</b> → 이 화면 아래 칸에 붙여넣고 <b>적용</b></li>
       </ol>
       <div class="buttons">
         <a class="btn bookmarklet" id="bookmarklet" href="#">스탠딩 가져오기</a>
         <button class="secondary small" id="btnCopyBm">북마크 코드 복사</button>
       </div>
-      <textarea id="importText" rows="3" style="margin-top:8px" placeholder="가져온 내용 붙여넣기 (코코포리아에서 복사한 캐릭터 데이터도 가능)"></textarea>
+      <div class="field" style="margin-top:8px"><span>룸 링크</span>
+        <div class="buttons" style="flex-wrap:nowrap">
+          <input type="url" id="roomUrl" placeholder="https://ccfolia.com/rooms/..." />
+          <button class="small" id="openRoom" style="white-space:nowrap">룸 열기</button>
+        </div>
+      </div>
+      <p class="hint" id="roomInfo"></p>
+
+      <h3>방법 B · 캐릭터를 하나씩 복사하기 (북마크가 안 될 때)</h3>
+      <ol class="steps">
+        <li>코코포리아에서 캐릭터 말(코마)을 우클릭 → <b>복사</b></li>
+        <li>아래 칸에 붙여넣기 (여러 명이면 이어서 계속 붙여넣기)</li>
+        <li><b>적용</b></li>
+      </ol>
+
+      <textarea id="importText" rows="3" style="margin-top:4px" placeholder="여기에 붙여넣기"></textarea>
       <div class="buttons" style="margin-top:6px">
         <button class="small" id="btnImport">적용</button>
         <span id="libInfo" class="hint" style="margin:0;align-self:center"></span>
       </div>
-      <p class="hint">코코포리아는 로그인한 사람만 룸 정보를 읽을 수 있어서, 링크만으로는 이미지를 가져올 수 없어요. 그래서 룸 안에서 북마크를 실행하는 방식이에요.<br />
+      <p class="hint">이미지 주소를 알고 있으면 아래 <b>5. 캐릭터</b>에서 직접 넣을 수도 있어요.<br />
         대사 안에 <code>@표정이름</code>이 있으면 그 표정이 자동으로 연결돼요.</p>
     </section>
 
@@ -366,31 +386,94 @@ function gradeDice(result) {
 // 코코포리아 룸 화면에서 실행되는 북마클릿. 로그인된 사용자의 토큰으로
 // 이 룸의 캐릭터 목록(이름·색·아이콘·표정)을 읽어 JSON으로 보여준다.
 function ccfoliaStandingExporter() {
+  const show = (title, message, text) => {
+    const old = document.getElementById("__nabicoco");
+    if (old) old.remove();
+    const box = document.createElement("div");
+    box.id = "__nabicoco";
+    box.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-family:sans-serif";
+    box.innerHTML = '<div style="background:#fff;color:#222;padding:20px;border-radius:12px;width:min(520px,92vw);line-height:1.6">'
+      + '<b style="font-size:16px"></b><p style="margin:8px 0;font-size:13px;white-space:pre-wrap"></p>'
+      + (text ? '<textarea readonly style="width:100%;height:140px;font-size:12px"></textarea>' : "")
+      + '<div style="margin-top:10px;text-align:right"><button style="padding:8px 14px;font-weight:bold;cursor:pointer"></button></div></div>';
+    box.querySelector("b").textContent = title;
+    box.querySelector("p").textContent = message;
+    const btn = box.querySelector("button");
+    btn.textContent = text ? "복사하고 닫기" : "닫기";
+    const ta = box.querySelector("textarea");
+    if (ta) ta.value = text;
+    btn.onclick = async () => {
+      if (ta) {
+        ta.select();
+        try { await navigator.clipboard.writeText(text); } catch (_) { document.execCommand("copy"); }
+      }
+      box.remove();
+    };
+    box.onclick = e => { if (e.target === box) box.remove(); };
+    document.body.appendChild(box);
+    if (ta) ta.select();
+  };
+
   (async () => {
     const m = location.pathname.match(/\/rooms\/([^/?#]+)/);
-    if (!/ccfolia\.com$/.test(location.hostname) || !m) { alert("코코포리아 룸 화면에서 실행해주세요."); return; }
+    if (!/(^|\.)ccfolia\.com$/.test(location.hostname) || !m) {
+      show("코코포리아 룸 화면에서 눌러주세요", "지금 페이지: " + location.href + "\n\n코코포리아 룸에 입장한 상태에서 북마크를 눌러야 해요.");
+      return;
+    }
     const roomId = m[1];
-    const fromLocalStorage = () => {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k || k.indexOf("firebase:authUser:") !== 0) continue;
-        try { const t = JSON.parse(localStorage.getItem(k)).stsTokenManager.accessToken; if (t) return t; } catch (_) {}
-      }
-      return null;
-    };
-    const token = fromLocalStorage() || await new Promise(res => {
+    show("불러오는 중…", "잠시만 기다려주세요.");
+
+    // Firebase 로그인 정보 (localStorage 또는 IndexedDB에 저장됨)
+    const users = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || "";
+      if (k.indexOf("firebase:authUser:") !== 0) continue;
+      try { users.push(Object.assign({ apiKey: k.split(":")[2] }, JSON.parse(localStorage.getItem(k)))); } catch (_) {}
+    }
+    await new Promise(res => {
       try {
         const rq = indexedDB.open("firebaseLocalStorageDb");
-        rq.onerror = () => res(null);
+        // DB가 없을 때 빈 DB를 만들어 코코포리아 로그인 저장소를 망가뜨리지 않도록 생성을 취소한다
+        rq.onupgradeneeded = e => e.target.transaction.abort();
+        rq.onerror = () => res();
         rq.onsuccess = e => {
           try {
             const g = e.target.result.transaction("firebaseLocalStorage", "readonly").objectStore("firebaseLocalStorage").getAll();
-            g.onsuccess = ev => res((ev.target.result || []).map(x => x && x.value && x.value.stsTokenManager && x.value.stsTokenManager.accessToken).find(Boolean) || null);
-            g.onerror = () => res(null);
-          } catch (_) { res(null); }
+            g.onsuccess = ev => {
+              for (const x of ev.target.result || []) {
+                if (x && x.value && x.value.stsTokenManager) users.push(Object.assign({ apiKey: String(x.fbase_key || "").split(":")[2] }, x.value));
+              }
+              res();
+            };
+            g.onerror = () => res();
+          } catch (_) { res(); }
         };
-      } catch (_) { res(null); }
+      } catch (_) { res(); }
     });
+    const user = users.find(u => u.stsTokenManager && u.stsTokenManager.accessToken);
+    if (!user) {
+      show("로그인 정보를 찾지 못했어요", "룸에 완전히 입장한 뒤(이름을 정하고 들어간 상태) 다시 눌러주세요.\n그래도 안 되면 변환기의 '방법 B'를 써주세요.");
+      return;
+    }
+    const stm = user.stsTokenManager;
+    let token = stm.accessToken;
+    let refreshed = false;
+    // 저장된 토큰은 1시간이면 만료되므로 필요하면 새로 받는다
+    const refresh = async () => {
+      refreshed = true;
+      if (!stm.refreshToken || !user.apiKey) return;
+      try {
+        const r = await fetch("https://securetoken.googleapis.com/v1/token?key=" + encodeURIComponent(user.apiKey), {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(stm.refreshToken),
+        });
+        const j = await r.json();
+        if (j.id_token || j.access_token) token = j.id_token || j.access_token;
+      } catch (_) {}
+    };
+    if (!stm.expirationTime || stm.expirationTime < Date.now() + 60000) await refresh();
+
     const val = v => v == null ? null
       : "stringValue" in v ? v.stringValue
       : "integerValue" in v ? +v.integerValue
@@ -400,12 +483,26 @@ function ccfoliaStandingExporter() {
       : "mapValue" in v ? obj(v.mapValue.fields) : null;
     const obj = f => { const o = {}; for (const k in f || {}) o[k] = val(f[k]); return o; };
     const base = "https://firestore.googleapis.com/v1/projects/ccfolia-160aa/databases/(default)/documents/rooms/" + roomId + "/characters?pageSize=300";
+    const get = async url => {
+      let r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+      if ((r.status === 401 || r.status === 403) && !refreshed) {
+        await refresh();
+        r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+      }
+      return r;
+    };
+
     const characters = [];
     let page = "";
     do {
-      const r = await fetch(base + (page ? "&pageToken=" + encodeURIComponent(page) : ""), { headers: token ? { Authorization: "Bearer " + token } : {} });
-      const j = await r.json();
-      if (j.error) { alert("불러오기 실패: " + j.error.message + "\n룸에 들어가 있는 상태인지 확인해주세요."); return; }
+      const r = await get(base + (page ? "&pageToken=" + encodeURIComponent(page) : ""));
+      let j = {};
+      try { j = await r.json(); } catch (_) {}
+      if (!r.ok || j.error) {
+        show("불러오기 실패 (" + r.status + ")",
+          (j.error && j.error.message || "") + "\n\n· 룸에 입장한 상태인지 확인해주세요.\n· 페이지를 새로고침한 뒤 다시 눌러보세요.\n· 그래도 안 되면 변환기의 '방법 B'를 써주세요.");
+        return;
+      }
       for (const d of j.documents || []) {
         const c = obj(d.fields);
         characters.push({
@@ -415,27 +512,39 @@ function ccfoliaStandingExporter() {
       }
       page = j.nextPageToken;
     } while (page);
-    const text = JSON.stringify({ kind: "nabicoco-standing", roomId, characters });
-    const box = document.createElement("div");
-    box.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-family:sans-serif";
-    box.innerHTML = '<div style="background:#fff;color:#222;padding:20px;border-radius:12px;width:min(520px,92vw)">'
-      + '<b>캐릭터 ' + characters.length + '명의 스탠딩을 불러왔어요</b>'
-      + '<p style="margin:8px 0;font-size:13px">아래 내용을 전부 복사해서 변환기에 붙여넣어 주세요.</p>'
-      + '<textarea readonly style="width:100%;height:160px;font-size:12px"></textarea>'
-      + '<div style="margin-top:10px;text-align:right"><button style="padding:8px 14px;font-weight:bold">복사하고 닫기</button></div></div>';
-    const ta = box.querySelector("textarea");
-    ta.value = text;
-    box.querySelector("button").onclick = async () => {
-      ta.select();
-      try { await navigator.clipboard.writeText(text); } catch (_) { document.execCommand("copy"); }
-      box.remove();
-    };
-    box.onclick = e => { if (e.target === box) box.remove(); };
-    document.body.appendChild(box);
-    ta.select();
-  })();
+
+    if (!characters.length) {
+      show("이 룸에 캐릭터가 없어요", "룸 ID: " + roomId + "\n캐릭터(말)가 있는 룸에서 다시 눌러주세요.");
+      return;
+    }
+    const faceCount = characters.reduce((n, c) => n + c.faces.length, 0);
+    show("캐릭터 " + characters.length + "명 · 표정 " + faceCount + "개를 불러왔어요",
+      "'복사하고 닫기'를 누른 뒤 변환기의 입력 칸에 붙여넣고 '적용'을 눌러주세요.",
+      JSON.stringify({ kind: "nabicoco-standing", roomId, characters }));
+  })().catch(err => show("오류가 났어요", String(err && err.message || err) + "\n\n변환기의 '방법 B'를 써주세요."));
 }
 const BOOKMARKLET = "javascript:" + encodeURIComponent("(" + ccfoliaStandingExporter.toString() + ")()");
+
+// 붙여넣은 글에서 JSON 값을 차례로 꺼낸다 (캐릭터 데이터를 여러 개 이어 붙인 경우)
+function splitJsonValues(text) {
+  const out = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"' && depth > 0) inStr = true;
+    else if (ch === "{" || ch === "[") { if (depth++ === 0) start = i; }
+    else if ((ch === "}" || ch === "]") && depth > 0 && --depth === 0) {
+      try { out.push(JSON.parse(text.slice(start, i + 1))); } catch (_) {}
+    }
+  }
+  return out;
+}
 
 function isImageUrl(u) {
   return typeof u === "string" && /^(https?:|data:image\/)/i.test(u.trim());
@@ -445,9 +554,8 @@ function isImageUrl(u) {
 function parseLibrary(text) {
   let data;
   try { data = JSON.parse(text); } catch (_) {
-    // 캐릭터 데이터를 여러 개 이어 붙인 경우
-    data = text.split(/\n(?=\s*\{)/).map(s => { try { return JSON.parse(s); } catch (_) { return null; } }).filter(Boolean);
-    if (!data.length) throw new Error("JSON 형식이 아니에요.");
+    data = splitJsonValues(text);
+    if (!data.length) throw new Error("붙여넣은 내용을 읽지 못했어요. 북마크 창이나 코코포리아에서 복사한 내용을 그대로 붙여넣어 주세요.");
   }
   const found = [];
   const seen = new Set();
@@ -1037,17 +1145,31 @@ $("bookmarklet").addEventListener("click", e => {
 });
 $("btnCopyBm").addEventListener("click", () =>
   copyText(BOOKMARKLET, "복사했어요. 새 북마크를 만들고 주소 칸에 붙여넣으세요"));
+const roomIdFrom = v => (v.match(/ccfolia\.com\/rooms\/([A-Za-z0-9_-]+)/) || v.trim().match(/^([A-Za-z0-9_-]{6,})$/) || [])[1];
+$("roomUrl").addEventListener("input", () => {
+  const v = $("roomUrl").value.trim();
+  const id = roomIdFrom(v);
+  $("roomInfo").textContent = !v ? ""
+    : id ? `룸 ID ${id} 확인! 이제 '룸 열기'를 누르고, 룸 화면에서 북마크를 눌러주세요.`
+    : "코코포리아 룸 링크 형식이 아니에요. (https://ccfolia.com/rooms/... 형태)";
+});
 $("openRoom").addEventListener("click", e => {
   e.preventDefault();
-  const m = $("roomUrl").value.match(/ccfolia\.com\/rooms\/([A-Za-z0-9_-]+)/) || $("roomUrl").value.trim().match(/^([A-Za-z0-9_-]{6,})$/);
-  if (!m) { toast("코코포리아 룸 링크를 먼저 붙여넣어 주세요"); $("roomUrl").focus(); return; }
-  window.open("https://ccfolia.com/rooms/" + m[1], "_blank", "noopener");
+  const id = roomIdFrom($("roomUrl").value);
+  if (!id) { toast("코코포리아 룸 링크를 먼저 붙여넣어 주세요"); $("roomUrl").focus(); return; }
+  window.open("https://ccfolia.com/rooms/" + id, "_blank", "noopener");
 });
-$("btnImport").addEventListener("click", () => {
+function importPasted() {
   const text = $("importText").value.trim();
   if (!text) return;
-  try { applyLibrary(parseLibrary(text)); $("importText").value = ""; } catch (err) { alert(err.message); }
-});
+  try {
+    const list = parseLibrary(text);
+    if (!list.length) throw new Error("캐릭터 정보를 찾지 못했어요. 북마크 창이나 코코포리아에서 복사한 내용을 그대로 붙여넣어 주세요.");
+    applyLibrary(list);
+    $("importText").value = "";
+  } catch (err) { alert(err.message); }
+}
+$("btnImport").addEventListener("click", importPasted);
 
 /* ---------------- 옵션 · 저장 ---------------- */
 
