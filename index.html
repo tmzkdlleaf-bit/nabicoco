@@ -470,6 +470,21 @@
         </details>
 
         <details class="sub">
+          <summary>🎬 비주얼 노벨</summary>
+          <div class="field"><span>인물 표시</span>
+            <select id="optVnSprite">
+              <option value="two">스탠딩 · 두 명까지</option>
+              <option value="one">스탠딩 · 말하는 사람만</option>
+              <option value="face">대화창 옆 얼굴</option>
+              <option value="none">표시 안 함</option>
+            </select>
+          </div>
+          <label class="row"><input type="checkbox" id="optVnSkipOther" checked /> 잡담 탭은 빼기</label>
+          <p class="hint">삽화는 <b>CG</b>(화면 가운데 큰 그림)로 나오고, 삽화 편집에서 <b>배경으로</b>를 켜면 배경이 돼요.
+            BGM은 그 장면부터 자동으로 흐르고, 섹션은 챕터 제목 화면이 돼요. 미리보기 위의 <b>🎬</b>로 바로 볼 수 있어요.</p>
+        </details>
+
+        <details class="sub">
           <summary>내려받는 HTML</summary>
           <div class="field"><span>필터바</span>
             <select id="optFilterBar">
@@ -555,6 +570,10 @@
         <button id="btnDownload" disabled title="Ctrl+S">⬇ HTML 다운로드</button>
         <button id="btnCopyTistory" class="secondary" disabled>티스토리용 코드 복사</button>
       </div>
+      <div class="buttons" style="margin-top:8px">
+        <button id="btnVnDownload" class="secondary small" disabled>🎬 비주얼 노벨 HTML</button>
+        <button id="btnVnOpen" class="ghost small" disabled>새 탭에서 플레이</button>
+      </div>
       <details class="sub" style="margin-top:8px">
         <summary>더 보기 · 티스토리에 올리는 법</summary>
         <div class="buttons" style="margin-bottom:8px">
@@ -584,6 +603,10 @@
           <span id="pvCount" class="hint" style="margin:0"></span>
           <button type="button" class="ghost small icon" id="pvPrev" aria-label="이전 결과">↑</button>
           <button type="button" class="ghost small icon" id="pvNext" aria-label="다음 결과">↓</button>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="미리보기 종류">
+          <label title="로그"><input type="radio" name="pvView" value="log" checked /><span>📜</span></label>
+          <label title="비주얼 노벨"><input type="radio" name="pvView" value="vn" /><span>🎬</span></label>
         </div>
         <div class="seg" role="radiogroup" aria-label="미리보기 모드">
           <label><input type="radio" name="pvMode" value="light" /><span>☀</span></label>
@@ -700,6 +723,7 @@
       </div>
     </div>
     <div class="field" data-for="bgm"><span>시작(초)</span><input type="number" id="bkStart" min="0" step="1" value="0" /></div>
+    <label class="row" data-for="image"><input type="checkbox" id="bkBg" /> 🎬 비주얼 노벨에서 배경으로 쓰기 (끄면 CG로 보여요)</label>
     <div class="dialog-actions">
       <button type="button" class="danger small" id="bkDelete">지우기</button>
       <div class="buttons">
@@ -1564,6 +1588,456 @@ ${toggle}
 }
 
 /* ================================================================
+ * 비주얼 노벨 내보내기
+ * 대사·삽화·BGM·섹션을 장면 목록(JSON)으로 바꾸고, 한 파일짜리 플레이어와 함께 HTML로 만든다.
+ * ================================================================ */
+
+function buildVisualNovel(settings, { preview = false } = {}) {
+  const { opts } = settings;
+  const vn = opts.vn || {};
+  const D = DARK_THEMES[opts.darkTheme] || DARK_THEMES.dark;
+  const sections = sectionList(opts.title);
+  let items = resolveMessages(settings);
+  const only = settings.section ?? null;
+  if (only !== null) items = items.filter(m => m.sec === only && !(m.kind === "split" && m.sec === only));
+
+  // 같은 이미지가 여러 번 나와도 한 번만 넣는다
+  const assets = [];
+  const asset = url => { let k = assets.indexOf(url); if (k < 0) { k = assets.length; assets.push(url); } return k; };
+  const boxBg = "#15151c";
+  const colorFor = c => ensureContrast(normalizeColor(c) || "#9a9aa5", [boxBg]);
+  const gradeColor = { success: "#64b5f6", critical: "#ffcc4d", failure: "#a3a3ad", fumble: "#ff7070", neutral: "#ffffff" };
+
+  const scenes = [];
+  const chapters = [{ title: only !== null && only > 0 ? sections[only]?.title || opts.title : opts.title || "세션 로그", at: 0 }];
+  for (const m of items) {
+    if (m.block) {
+      if (m.kind === "image" && isImageUrl(m.url)) scenes.push({ t: m.bg ? "bg" : "cg", a: asset(m.url), cap: m.caption || "" });
+      else if (m.kind === "bgm") {
+        const yt = youtubeInfo(m.url, m.start);
+        if (yt) scenes.push({ t: "bgm", id: yt.id, start: yt.start, title: m.title || "BGM" });
+      } else if (m.kind === "split") {
+        const title = m.title || `섹션 ${m.sec + 1}`;
+        chapters.push({ title, at: scenes.length });
+        scenes.push({ t: "chapter", title });
+      }
+      continue;
+    }
+    if (vn.skipOther && m.format === "other") continue;
+    const d = opts.dice && parseDice(m.text);
+    const html = d
+      ? `<span class="vn-dice">🎲 ${escapeHtml(d.command)}${d.steps.map(s => ` <i>› ${escapeHtml(s)}</i>`).join("")} <i>›</i> <b style="color:${gradeColor[d.grade]}">${escapeHtml(d.result)}</b></span>`
+      : formatText(m.text, { ...opts, search: "" }, "#a0a0aa");
+    const system = /^(system|システム|시스템)$/i.test(m.name);
+    const box = m.format === "info" || m.format === "secret";
+    scenes.push({
+      t: "line", html,
+      name: m.narration || system ? "" : m.name,
+      who: m.speaker,
+      c: colorFor(m.color),
+      f: isImageUrl(m.face) && !m.narration && !system ? asset(m.face) : -1,
+      n: m.narration || system ? 1 : 0,
+      box: box ? { label: (m.format === "secret" ? "🔒 " : "ℹ ") + m.tab, c: normalizeColor(m.tabSet?.color) || TAB_FORMAT_COLORS[m.format] } : 0,
+    });
+  }
+
+  const title = opts.title || "세션 로그";
+  const data = {
+    title, key: "nb-vn:" + title, assets, scenes, chapters,
+    sprite: vn.sprite || "two", lines: scenes.filter(s => s.t === "line").length,
+    bg: [D.bg, mix(D.bg, "#6c5ce7", 0.75)],
+  };
+  const font = FONTS[opts.font] || FONTS.pretendard;
+  const json = JSON.stringify(data).replace(/</g, "\\u003c");
+  return `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><title>${escapeHtml(title)}</title>
+${font.href ? `<link rel="stylesheet" href="${font.href}">` : ""}
+<style>${VN_CSS.replace("__FONT__", (font.stack ? font.stack + "," : "") + FONT_FALLBACK)}</style></head>
+<body${preview ? ' class="vn-preview"' : ""}>
+<div id="vn" tabindex="0" aria-label="${escapeHtml(title)}">
+  <div class="vn-bg"></div><div class="vn-bg vn-bg2"></div>
+  <div class="vn-sprites"></div>
+  <div class="vn-box" hidden><div class="vn-name"></div><div class="vn-label"></div><img class="vn-face" alt="" hidden><div class="vn-text" aria-live="polite"></div><div class="vn-next" aria-hidden="true">▼</div></div>
+  <div class="vn-cg" hidden><img alt=""><div class="vn-cap"></div></div>
+  <div class="vn-chapter" hidden><div class="vn-chapter-t"></div></div>
+  <div class="vn-bar">
+    <span class="vn-music" hidden></span>
+    <button type="button" data-a="back" title="이전 (←)">⟲</button>
+    <button type="button" data-a="log" title="지난 대사 (L)">로그</button>
+    <button type="button" data-a="auto" title="자동 진행 (A)">자동</button>
+    <button type="button" data-a="skip" title="빨리 넘기기 (S)">빨리</button>
+    <button type="button" data-a="menu" title="메뉴 (Esc)">메뉴</button>
+  </div>
+  <div class="vn-panel vn-title">
+    <div class="vn-title-in">
+      <h1></h1><p class="vn-sub"></p>
+      <button type="button" data-a="start">처음부터</button>
+      <button type="button" data-a="resume" hidden>이어서 보기</button>
+      <button type="button" data-a="chapters">챕터 선택</button>
+      <button type="button" data-a="settings">설정</button>
+      <p class="vn-help">클릭·Space·Enter: 다음 · ←: 이전 · L: 로그 · A: 자동 · S: 빨리 · F: 전체 화면</p>
+    </div>
+  </div>
+  <div class="vn-panel vn-log" hidden><div class="vn-sheet"><div class="vn-head"><b>지난 대사</b><button type="button" data-a="close">닫기</button></div><div class="vn-list"></div></div></div>
+  <div class="vn-panel vn-chapters" hidden><div class="vn-sheet"><div class="vn-head"><b>챕터</b><button type="button" data-a="close">닫기</button></div><div class="vn-list"></div></div></div>
+  <div class="vn-panel vn-settings" hidden><div class="vn-sheet"><div class="vn-head"><b>설정</b><button type="button" data-a="close">닫기</button></div>
+    <label>글자 나오는 속도 <input type="range" class="vn-speed" min="0" max="80" step="5"></label>
+    <label>자동 진행 대기 <input type="range" class="vn-wait" min="400" max="4000" step="100"></label>
+    <label><input type="checkbox" class="vn-bgm-on"> BGM 재생</label>
+    <div class="vn-menu-btns"><button type="button" data-a="title">타이틀로</button><button type="button" data-a="full">전체 화면</button></div>
+  </div></div>
+  <div class="vn-player" aria-hidden="true"></div>
+</div>
+<script>(${vnPlayer.toString()})(${json});<\/script>
+</body></html>`;
+}
+
+const VN_CSS = `
+*{box-sizing:border-box}[hidden]{display:none!important}html,body{margin:0;height:100%;background:#000;overflow:hidden}
+#vn{position:fixed;inset:0;font-family:__FONT__;color:#f2f2f7;user-select:none;-webkit-user-select:none;outline:none;overflow:hidden;cursor:pointer;word-break:keep-all;overflow-wrap:anywhere}
+.vn-bg{position:absolute;inset:0;background-size:cover;background-position:center;transition:opacity .8s}
+.vn-bg2{opacity:0}
+.vn-sprites{position:absolute;left:0;right:0;bottom:0;height:82%;pointer-events:none}
+.vn-sprite{position:absolute;bottom:0;height:100%;max-width:48vw;object-fit:contain;object-position:bottom;transform:translateX(-50%);transition:left .35s,filter .3s,opacity .35s;filter:drop-shadow(0 10px 24px rgb(0 0 0/.45))}
+.vn-sprite.dim{filter:brightness(.5) drop-shadow(0 10px 24px rgb(0 0 0/.45))}
+.vn-box{position:absolute;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(980px,94vw);min-height:9.2em;padding:1.5em 1.8em 1.4em;border-radius:18px;background:rgb(16 16 24/.8);border:1px solid rgb(255 255 255/.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-size:clamp(15px,2.1vw,19px);line-height:1.8;box-shadow:0 12px 40px rgb(0 0 0/.35)}
+.vn-box.narr{text-align:center;font-style:normal}
+.vn-box.hasface{padding-left:calc(1.8em + 118px)}
+.vn-face{position:absolute;left:1.2em;top:50%;transform:translateY(-50%);width:104px;height:104px;border-radius:14px;object-fit:cover;object-position:top;border:1px solid rgb(255 255 255/.2)}
+.vn-name{position:absolute;top:-.95em;left:1.2em;padding:.18em 1em;border-radius:10px;font-weight:800;font-size:.95em;background:#232330;border:1px solid rgb(255 255 255/.18);box-shadow:0 4px 14px rgb(0 0 0/.3)}
+.vn-name:empty{display:none}
+.vn-label{font-size:.72em;font-weight:700;margin-bottom:.3em;opacity:.9}
+.vn-label:empty{display:none}
+.vn-text{min-height:3.6em}
+.vn-text i{font-style:italic}
+.vn-dice{display:inline-block;padding:.2em .8em;border-radius:10px;background:rgb(255 255 255/.08)}
+.vn-dice i{font-style:normal;opacity:.6}
+.vn-next{position:absolute;right:1.1em;bottom:.6em;font-size:.8em;opacity:0;animation:vnb 1s infinite}
+.vn-box.done .vn-next{opacity:.8}
+@keyframes vnb{50%{transform:translateY(3px)}}
+.vn-cg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgb(0 0 0/.72);padding:20px}
+.vn-cg img{max-width:92vw;max-height:78vh;border-radius:12px;box-shadow:0 20px 60px rgb(0 0 0/.5)}
+.vn-cap{font-size:15px;opacity:.85}
+.vn-chapter{position:absolute;inset:0;display:grid;place-items:center;background:rgb(0 0 0/.55)}
+.vn-chapter-t{font-size:clamp(22px,4vw,40px);font-weight:800;letter-spacing:-.02em;padding:.4em 1.2em;border-top:1px solid rgb(255 255 255/.4);border-bottom:1px solid rgb(255 255 255/.4);animation:vnf 1s}
+@keyframes vnf{from{opacity:0;transform:translateY(8px)}}
+#vn.at-title .vn-bar{display:none}.vn-bar{position:absolute;top:max(12px,env(safe-area-inset-top));right:12px;display:flex;gap:6px;align-items:center;z-index:5}
+.vn-bar button,.vn-panel button{font:inherit;font-size:13px;font-weight:700;color:#fff;background:rgb(20 20 30/.7);border:1px solid rgb(255 255 255/.2);border-radius:999px;padding:6px 12px;cursor:pointer;min-height:32px}
+.vn-bar button[aria-pressed=true]{background:#6c5ce7;border-color:#8b7cff}
+.vn-music{font-size:12px;opacity:.8;max-width:30vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:4px}
+.vn-panel{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:rgb(0 0 0/.6);cursor:default}
+.vn-title{background:linear-gradient(rgb(0 0 0/.25),rgb(0 0 0/.7))}
+.vn-title-in{text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px}
+.vn-title h1{font-size:clamp(26px,5vw,52px);margin:0 0 4px;letter-spacing:-.03em;text-shadow:0 4px 20px rgb(0 0 0/.6)}
+.vn-sub{margin:0 0 14px;opacity:.8}
+.vn-title-in button{min-width:200px;font-size:15px;padding:10px 20px}
+.vn-help{font-size:12px;opacity:.6;margin-top:14px}
+.vn-sheet{width:min(720px,94vw);max-height:84vh;display:flex;flex-direction:column;background:#17171f;border:1px solid rgb(255 255 255/.15);border-radius:16px;padding:16px 18px}
+.vn-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.vn-list{overflow:auto;display:flex;flex-direction:column;gap:10px}
+.vn-list .row{padding:8px 10px;border-radius:10px;cursor:pointer;line-height:1.7}
+.vn-list .row:hover{background:rgb(255 255 255/.06)}
+.vn-list .row b{display:block;font-size:.85em}
+.vn-settings label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;font-size:14px}
+.vn-menu-btns{display:flex;gap:8px;margin-top:10px}
+.vn-player{position:absolute;width:1px;height:1px;left:-10px;top:-10px;overflow:hidden;opacity:0;pointer-events:none}
+@media (max-width:640px){.vn-box{min-height:8em;padding:1.3em 1.1em 1.1em}.vn-box.hasface{padding-left:calc(1.1em + 74px)}.vn-face{width:64px;height:64px;left:.8em}.vn-sprites{height:62%}.vn-sprite{max-width:56vw}.vn-bar button{padding:5px 9px;font-size:12px}.vn-music{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+`;
+
+// 내보낸 HTML 안에서 실행되는 플레이어 (이 함수 자체를 문자열로 넣는다)
+function vnPlayer(D) {
+  var root = document.getElementById("vn");
+  var q = function (s) { return root.querySelector(s); };
+  var S = D.scenes, A = D.assets;
+  var store = {
+    get: function (k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
+  var speed = store.get("nb-vn-speed", 30), wait = store.get("nb-vn-wait", 1400), bgmOn = store.get("nb-vn-bgm", true);
+  var i = -1, typing = null, auto = false, skip = false, timer = 0, curBg, curBgm = null, bgFlip = false;
+  var interactive = function (s) { return s.t === "line" || s.t === "cg" || s.t === "chapter"; };
+
+  // n번째 장면까지의 배경·BGM·스탠딩 상태를 계산한다 (앞으로·뒤로·점프 모두 같은 방법)
+  function stateAt(n) {
+    var bg = null, bgm = null, slots = [], active = null;
+    for (var k = 0; k <= n && k < S.length; k++) {
+      var s = S[k];
+      if (s.t === "bg") bg = A[s.a];
+      else if (s.t === "bgm") bgm = s;
+      else if (s.t === "line" && !s.n) {
+        active = s.who;
+        if (s.f < 0) continue;
+        var found = null;
+        for (var j = 0; j < slots.length; j++) if (slots[j].who === s.who) found = slots[j];
+        if (found) { found.src = A[s.f]; found.t = k; }
+        else {
+          slots.push({ who: s.who, src: A[s.f], t: k });
+          var max = D.sprite === "two" ? 2 : 1;
+          if (slots.length > max) {
+            var old = 0;
+            for (var j2 = 1; j2 < slots.length; j2++) if (slots[j2].t < slots[old].t) old = j2;
+            slots.splice(old, 1);
+          }
+        }
+      }
+    }
+    return { bg: bg, bgm: bgm, slots: slots, active: active };
+  }
+
+  function setBg(url) {
+    if (url === curBg) return;
+    curBg = url;
+    var a = q(".vn-bg"), b = q(".vn-bg2");
+    var show = bgFlip ? a : b, hide = bgFlip ? b : a;
+    show.style.background = url ? "center/cover no-repeat url(\"" + url.replace(/"/g, "%22") + "\")" : "linear-gradient(160deg," + D.bg[0] + "," + D.bg[1] + ")";
+    show.style.opacity = 1; hide.style.opacity = 0;
+    bgFlip = !bgFlip;
+  }
+
+  function setBgm(s) {
+    var id = s && bgmOn ? s.id + ":" + s.start : null;
+    if (id === curBgm) return;
+    curBgm = id;
+    var box = q(".vn-player"), label = q(".vn-music");
+    box.innerHTML = "";
+    label.hidden = !s;
+    if (s) label.textContent = "♪ " + s.title + (bgmOn ? "" : " (꺼짐)");
+    if (!id) return;
+    var f = document.createElement("iframe");
+    f.allow = "autoplay; encrypted-media";
+    f.src = "https://www.youtube-nocookie.com/embed/" + s.id + "?autoplay=1&loop=1&playlist=" + s.id + "&start=" + (s.start || 0);
+    box.appendChild(f);
+  }
+
+  function renderSprites(st) {
+    var box = q(".vn-sprites");
+    if (D.sprite === "face" || D.sprite === "none") { box.innerHTML = ""; return; }
+    var imgs = box.querySelectorAll("img");
+    var keep = {};
+    for (var k = 0; k < imgs.length; k++) keep[imgs[k].dataset.who] = imgs[k];
+    box.innerHTML = "";
+    st.slots.forEach(function (sl, idx) {
+      var img = keep[sl.who] || document.createElement("img");
+      img.className = "vn-sprite" + (st.active && st.active !== sl.who ? " dim" : "");
+      img.dataset.who = sl.who;
+      img.alt = "";
+      if (img.getAttribute("src") !== sl.src) img.src = sl.src;
+      img.style.left = st.slots.length === 1 ? "50%" : (idx === 0 ? "27%" : "73%");
+      box.appendChild(img);
+    });
+  }
+
+  function hideAll() {
+    q(".vn-box").hidden = true; q(".vn-cg").hidden = true; q(".vn-chapter").hidden = true;
+  }
+
+  function type(el, html, instant) {
+    clearInterval(typing); typing = null;
+    el.innerHTML = html;
+    var box = q(".vn-box");
+    box.classList.remove("done");
+    if (instant || !speed || skip) { box.classList.add("done"); return afterTyped(); }
+    var nodes = [], w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) nodes.push({ n: w.currentNode, t: w.currentNode.textContent });
+    nodes.forEach(function (x) { x.n.textContent = ""; });
+    var ni = 0, ci = 0;
+    typing = setInterval(function () {
+      if (ni >= nodes.length) { clearInterval(typing); typing = null; box.classList.add("done"); afterTyped(); return; }
+      var x = nodes[ni];
+      ci++;
+      x.n.textContent = x.t.slice(0, ci);
+      if (ci >= x.t.length) { ni++; ci = 0; }
+    }, speed);
+    el._finish = function () {
+      clearInterval(typing); typing = null;
+      nodes.forEach(function (x) { x.n.textContent = x.t; });
+      box.classList.add("done");
+      afterTyped();
+    };
+  }
+
+  function afterTyped() {
+    clearTimeout(timer);
+    if (skip) timer = setTimeout(next, 70);
+    else if (auto) {
+      var len = (q(".vn-text").textContent || "").length;
+      timer = setTimeout(next, wait + len * 25);
+    }
+  }
+
+  function show(n, instant) {
+    i = n;
+    var s = S[n], st = stateAt(n);
+    setBg(st.bg);
+    setBgm(st.bgm);
+    renderSprites(st);
+    hideAll();
+    store.set(D.key, n);
+    if (!s) return;
+    if (s.t === "line") {
+      var box = q(".vn-box");
+      box.hidden = false;
+      box.className = "vn-box" + (s.n ? " narr" : "");
+      var name = q(".vn-name");
+      name.textContent = s.name;
+      name.style.color = s.c;
+      var label = q(".vn-label");
+      label.textContent = s.box ? s.box.label : "";
+      label.style.color = s.box ? s.box.c : "";
+      box.style.borderColor = s.box ? s.box.c : "";
+      var face = q(".vn-face");
+      var useFace = D.sprite === "face" && s.f >= 0;
+      face.hidden = !useFace;
+      if (useFace) { face.src = A[s.f]; box.classList.add("hasface"); }
+      type(q(".vn-text"), s.html, instant);
+    } else if (s.t === "cg") {
+      var cg = q(".vn-cg");
+      cg.hidden = false;
+      cg.querySelector("img").src = A[s.a];
+      cg.querySelector(".vn-cap").textContent = s.cap || "";
+      afterTyped();
+    } else if (s.t === "chapter") {
+      q(".vn-chapter").hidden = false;
+      q(".vn-chapter-t").textContent = s.title;
+      afterTyped();
+    }
+  }
+
+  function next() {
+    clearTimeout(timer);
+    var t = q(".vn-text");
+    if (typing && t._finish) { t._finish(); return; }
+    for (var k = i + 1; k < S.length; k++) if (interactive(S[k])) { show(k); return; }
+    // 끝
+    auto = skip = false; syncBar();
+    hideAll();
+    var st = stateAt(S.length - 1);
+    setBg(st.bg);
+    q(".vn-chapter").hidden = false;
+    q(".vn-chapter-t").textContent = "끝";
+    i = S.length;
+  }
+
+  function back() {
+    clearTimeout(timer);
+    for (var k = Math.min(i, S.length) - 1; k >= 0; k--) if (interactive(S[k])) { show(k, true); return; }
+  }
+
+  function panel(name) {
+    ["log", "chapters", "settings"].forEach(function (p) { q(".vn-" + p).hidden = p !== name; });
+    if (name === "log") {
+      var list = q(".vn-log .vn-list");
+      list.innerHTML = "";
+      for (var k = 0; k <= Math.min(i, S.length - 1); k++) {
+        var s = S[k];
+        if (s.t !== "line") continue;
+        var row = document.createElement("div");
+        row.className = "row";
+        row.dataset.to = k;
+        row.innerHTML = (s.name ? "<b></b>" : "") + "<div>" + s.html + "</div>";
+        if (s.name) { row.querySelector("b").textContent = s.name; row.querySelector("b").style.color = s.c; }
+        list.appendChild(row);
+      }
+      list.scrollTop = list.scrollHeight;
+    }
+    if (name === "chapters") {
+      var cl = q(".vn-chapters .vn-list");
+      cl.innerHTML = "";
+      D.chapters.forEach(function (c, k) {
+        var row = document.createElement("div");
+        row.className = "row";
+        row.dataset.to = c.at;
+        row.textContent = (k + 1) + ". " + c.title;
+        cl.appendChild(row);
+      });
+    }
+    if (name === "settings") {
+      q(".vn-speed").value = 80 - speed;
+      q(".vn-wait").value = wait;
+      q(".vn-bgm-on").checked = bgmOn;
+    }
+  }
+  function closePanels() { ["log", "chapters", "settings"].forEach(function (p) { q(".vn-" + p).hidden = true; }); }
+  function jump(n) {
+    closePanels();
+    showTitle(false);
+    var k = n;
+    while (k < S.length && !interactive(S[k])) k++;
+    show(Math.min(k, S.length - 1), true);
+  }
+  function syncBar() {
+    q('[data-a="auto"]').setAttribute("aria-pressed", auto);
+    q('[data-a="skip"]').setAttribute("aria-pressed", skip);
+  }
+  function showTitle(on) {
+    q(".vn-title").hidden = !on;
+    root.classList.toggle("at-title", on);
+    if (on) {
+      var saved = store.get(D.key, 0);
+      q('[data-a="resume"]').hidden = !(saved > 0 && saved < S.length);
+    }
+  }
+  function start(n) {
+    showTitle(false);
+    curBgm = undefined;
+    if (n > 0) jump(n); else { i = -1; next(); }
+    root.focus();
+  }
+
+  root.addEventListener("click", function (e) {
+    var b = e.target.closest("button"), row = e.target.closest(".row");
+    if (row) { jump(+row.dataset.to); return; }
+    if (b) {
+      var a = b.dataset.a;
+      if (a === "start") start(0);
+      else if (a === "resume") start(store.get(D.key, 0));
+      else if (a === "chapters" || a === "settings" || a === "log") panel(a);
+      else if (a === "menu") panel("settings");
+      else if (a === "close") closePanels();
+      else if (a === "back") back();
+      else if (a === "auto") { auto = !auto; skip = false; syncBar(); if (auto && !typing) afterTyped(); }
+      else if (a === "skip") { skip = !skip; auto = false; syncBar(); if (skip) next(); }
+      else if (a === "title") { closePanels(); auto = skip = false; syncBar(); clearTimeout(timer); showTitle(true); }
+      else if (a === "full") { if (document.fullscreenElement) document.exitFullscreen(); else if (root.requestFullscreen) root.requestFullscreen(); }
+      return;
+    }
+    if (e.target.closest(".vn-panel")) return;
+    if (skip) { skip = false; syncBar(); }
+    next();
+  });
+  root.addEventListener("wheel", function (e) {
+    if (e.target.closest(".vn-panel")) return;
+    if (e.deltaY > 0) next(); else back();
+  }, { passive: true });
+  document.addEventListener("keydown", function (e) {
+    var open = !q(".vn-title").hidden || ["log", "chapters", "settings"].some(function (p) { return !q(".vn-" + p).hidden; });
+    var k = e.key;
+    if (k === "Escape") { if (open && q(".vn-title").hidden) closePanels(); else if (!open) panel("settings"); return; }
+    if (open) return;
+    if (k === " " || k === "Enter" || k === "ArrowRight" || k === "ArrowDown" || k === "PageDown") { e.preventDefault(); next(); }
+    else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp") { e.preventDefault(); back(); }
+    else if (k === "l" || k === "L") panel("log");
+    else if (k === "a" || k === "A") q('[data-a="auto"]').click();
+    else if (k === "s" || k === "S") q('[data-a="skip"]').click();
+    else if (k === "f" || k === "F") q('[data-a="full"]').click();
+  });
+  q(".vn-speed").addEventListener("input", function (e) { speed = 80 - +e.target.value; store.set("nb-vn-speed", speed); });
+  q(".vn-wait").addEventListener("input", function (e) { wait = +e.target.value; store.set("nb-vn-wait", wait); });
+  q(".vn-bgm-on").addEventListener("change", function (e) { bgmOn = e.target.checked; store.set("nb-vn-bgm", bgmOn); curBgm = undefined; setBgm(stateAt(i).bgm); });
+
+  // 타이틀 화면
+  q(".vn-title h1").textContent = D.title;
+  q(".vn-sub").textContent = D.lines + "개의 대사" + (D.chapters.length > 1 ? " · 챕터 " + D.chapters.length + "개" : "");
+  showTitle(true);
+  var firstBg = null;
+  for (var k = 0; k < S.length; k++) if (S[k].t === "bg") { firstBg = A[S[k].a]; break; }
+  setBg(firstBg);
+  if (!document.body.classList.contains("vn-preview")) root.focus();
+}
+
+/* ================================================================
  * UI
  * ================================================================ */
 
@@ -1610,6 +2084,7 @@ function readOpts() {
     paren: $("optParen").checked,
     sticky: $("optSticky").checked,
     stripTag: $("optStripTag").checked,
+    vn: { sprite: $("optVnSprite").value, skipOther: $("optVnSkipOther").checked },
     search: $("pvSearch").value.trim(),
     previewScheme: previewScheme(),
   };
@@ -1683,7 +2158,7 @@ function loadMessages(messages, title, sourceLabel) {
   $("tabsCard").hidden = false;
   $("charsCard").hidden = false;
   $("blocksCard").hidden = false;
-  for (const id of ["btnDownload", "btnOpen", "btnCopyHtml", "btnCopyTistory", "btnExportWork", "btnZip", "btnAppend"]) $(id).disabled = false;
+  for (const id of ["btnDownload", "btnOpen", "btnCopyHtml", "btnCopyTistory", "btnExportWork", "btnZip", "btnAppend", "btnVnDownload", "btnVnOpen"]) $(id).disabled = false;
   $("empty").hidden = true;
   $("preview").hidden = false;
   undoStack.reset();
@@ -2006,7 +2481,7 @@ function renderBlocks() {
       <button type="button" class="secondary small" data-act="goto">보기</button>
       <button type="button" class="secondary small" data-act="edit">편집</button>`;
     if (row.querySelector("img")) row.querySelector("img").src = m.url;
-    row.querySelector(".lbl").textContent = m.kind === "image" ? (m.caption || "삽화") : m.title || BLOCK_NAMES[m.kind];
+    row.querySelector(".lbl").textContent = m.kind === "image" ? (m.bg ? "[배경] " : "") + (m.caption || "삽화") : m.title || BLOCK_NAMES[m.kind];
     row.querySelector('[data-act="edit"]').addEventListener("click", () => openBlockEditor(i));
     row.querySelector('[data-act="goto"]').addEventListener("click", () => { setView("preview"); scrollPreviewTo(i); });
     box.append(row);
@@ -2114,9 +2589,11 @@ function update({ keepScroll = true } = {}) {
     const frame = $("preview");
     savedScroll = keepScroll ? (frame.contentWindow?.scrollY || 0) : 0;
     const opts = readOpts();
-    frame.style.colorScheme = opts.previewScheme;
-    frame.srcdoc = buildOutput(settings(), "preview");
-    $("previewTitle").textContent = `${opts.title} · 클릭해서 수정`;
+    const vnView = radio("pvView") === "vn";
+    frame.style.colorScheme = vnView ? "dark" : opts.previewScheme;
+    frame.srcdoc = vnView ? buildVisualNovel(settings({ section: scope() }), { preview: true }) : buildOutput(settings(), "preview");
+    $("previewTitle").dataset.vn = vnView ? "1" : "";
+    $("previewTitle").textContent = vnView ? `${opts.title} · 비주얼 노벨 미리보기` : `${opts.title} · 클릭해서 수정`;
     const deleted = state.messages.filter(m => m.e?.hidden).length;
     $("deletedInfo").hidden = !deleted;
     $("deletedInfo").innerHTML = `삭제한 대사 ${deleted}개 · <a href="#" id="restoreAll">모두 되살리기</a>`;
@@ -2322,6 +2799,7 @@ function openBlockEditor(i) {
   $("bkName").placeholder = b.kind === "image" ? "설명 (선택)" : b.kind === "bgm" ? "곡 제목" : "섹션 제목";
   $("bkWidth").value = b.width || "100%";
   $("bkStart").value = b.start || 0;
+  $("bkBg").checked = !!b.bg;
   const r = document.querySelector(`input[name="bkAlign"][value="${b.align || "center"}"]`);
   if (r) r.checked = true;
   $("blockEditor").showModal();
@@ -2339,6 +2817,7 @@ $("bkSave").addEventListener("click", () => {
     b.caption = $("bkName").value.trim();
     b.width = $("bkWidth").value.trim() || "100%";
     b.align = radio("bkAlign") || "center";
+    b.bg = $("bkBg").checked;
   } else if (b.kind === "bgm") {
     if (!youtubeInfo(url)) { toast("유튜브 링크를 넣어주세요"); return; }
     b.url = url;
@@ -2799,7 +3278,7 @@ function restoreWork(d) {
   state.cursor = -1;
   rebuildIndex();
   for (const id of ["tabsCard", "charsCard", "blocksCard", "empty"]) $(id).hidden = id === "empty";
-  for (const id of ["btnDownload", "btnOpen", "btnCopyHtml", "btnCopyTistory", "btnExportWork", "btnZip", "btnAppend"]) $(id).disabled = false;
+  for (const id of ["btnDownload", "btnOpen", "btnCopyHtml", "btnCopyTistory", "btnExportWork", "btnZip", "btnAppend", "btnVnDownload", "btnVnOpen"]) $(id).disabled = false;
   $("preview").hidden = false;
   undoStack.reset();
   update({ keepScroll: false });
@@ -2879,6 +3358,15 @@ $("btnCopyHtml").addEventListener("click", () => copyText(buildOutput(settings({
 $("btnCopyTistory").addEventListener("click", () =>
   copyText(buildOutput(settings({ section: scope() }), "tistory"), "티스토리용 코드를 복사했어요. HTML 모드에 붙여넣으세요"));
 
+$("btnVnDownload").addEventListener("click", () => {
+  downloadBlob(new Blob([buildVisualNovel(settings({ section: scope() }))], { type: "text/html;charset=utf-8" }), exportName() + " (비주얼 노벨).html");
+  toast("비주얼 노벨 HTML을 내려받았어요");
+});
+$("btnVnOpen").addEventListener("click", () => {
+  window.open(URL.createObjectURL(new Blob([buildVisualNovel(settings({ section: scope() }))], { type: "text/html;charset=utf-8" })), "_blank");
+});
+document.querySelectorAll('input[name="pvView"]').forEach(r => r.addEventListener("change", () => update({ keepScroll: false })));
+
 // JSZip은 ZIP을 만들 때만 불러온다
 function loadJsZip() {
   if (window.JSZip) return Promise.resolve(window.JSZip);
@@ -2897,6 +3385,7 @@ $("btnZip").addEventListener("click", async () => {
     const title = readOpts().title;
     const list = sectionList(title);
     zip.file(`00. ${safeName(title)} (전체).html`, buildOutput(settings(), "page"));
+    zip.file(`00. ${safeName(title)} (비주얼 노벨).html`, buildVisualNovel(settings()));
     for (const s of list) {
       zip.file(`${String(s.index + 1).padStart(2, "0")}. ${safeName(s.title)}.html`, buildOutput(settings({ section: s.index }), "page"));
       zip.file(`티스토리용/${String(s.index + 1).padStart(2, "0")}. ${safeName(s.title)}.txt`, buildOutput(settings({ section: s.index }), "tistory"));
@@ -2949,7 +3438,7 @@ function loadSample() {
   loadSource(SAMPLE, "예시 로그.html");
   state.chars.KP.narration = true;
   // 삽화 · BGM · 섹션 예시
-  state.messages.splice(1, 0, { kind: "image", url: sampleScene(), width: "100%", align: "center", caption: "언덕 위의 저택", e: {} });
+  state.messages.splice(1, 0, { kind: "image", url: sampleScene(), width: "100%", align: "center", caption: "언덕 위의 저택", bg: true, e: {} });
   state.messages.splice(2, 0, { kind: "bgm", url: "https://youtu.be/jfKfPfyJRdk", title: "비 오는 밤", start: 0, e: {} });
   const clue = state.messages.findIndex(m => m.tab === "info" && m.name === "KP");
   state.messages.splice(clue, 0, { kind: "split", title: "2장 · 복도 끝의 방", e: {} });
