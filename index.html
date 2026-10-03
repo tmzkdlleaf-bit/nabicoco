@@ -568,6 +568,15 @@
           <div class="field"><span>스탠딩 크기</span>
             <div class="range"><input type="range" id="optVnSize" min="40" max="120" step="5" value="90" /><output id="optVnSizeOut">90%</output></div>
           </div>
+          <div class="field"><span>대화창</span>
+            <select id="optVnSkin">
+              <option value="glass">반투명 (기본)</option>
+              <option value="paper">종이</option>
+              <option value="game">게임풍 (테두리)</option>
+              <option value="minimal">미니멀 (아래 그림자)</option>
+              <option value="light">밝은 창</option>
+            </select>
+          </div>
           <div class="field"><span>잡담</span>
             <select id="optVnChat">
               <option value="side">화면 옆 채팅창에</option>
@@ -768,6 +777,16 @@
           <option value="auto">자동 (캐릭터 설정 따름)</option>
           <option value="dialog">대사</option>
           <option value="narration">나레이션</option>
+        </select>
+      </div>
+      <div class="field"><span>연출 <small class="muted">(비주얼 노벨)</small></span>
+        <select id="edFx">
+          <option value="">없음</option>
+          <option value="shake">화면 흔들림</option>
+          <option value="flash">번쩍임</option>
+          <option value="black">암전 후 밝아짐</option>
+          <option value="jump">말하는 인물 깡총</option>
+          <option value="leave">이 대사 뒤 무대에서 내려감</option>
         </select>
       </div>
     </div>
@@ -1261,7 +1280,7 @@ function resolveMessages(settings) {
       i, no: lineNo, sec, tab: m.tab, text, face, narration, speaker,
       format, tabSet, narrStyle: c.narrStyle || "",
       name: (c.rename || speaker).trim() || speaker,
-      color: c.color || m.color, time: m.time || 0,
+      color: c.color || m.color, time: m.time || 0, fx: e.fx || "",
     });
   });
   return out;
@@ -1854,8 +1873,9 @@ function buildVisualNovel(settings, { preview = false } = {}) {
   // 같은 이미지가 여러 번 나와도 한 번만 넣는다
   const assets = [];
   const asset = url => { let k = assets.indexOf(url); if (k < 0) { k = assets.length; assets.push(url); } return k; };
-  const boxBg = "#15151c";
-  const colorFor = c => ensureContrast(normalizeColor(c) || "#9a9aa5", [boxBg]);
+  // 이름 색은 대화창 바탕에 맞춰 보정 (옆 잡담 창은 늘 어두움)
+  const boxBg = { paper: "#f4ecd8", light: "#fafafc" }[vn.skin] || "#15151c";
+  const colorFor = (c, bg = boxBg) => ensureContrast(normalizeColor(c) || "#9a9aa5", [bg]);
   const gradeColor = { success: "#64b5f6", critical: "#ffcc4d", failure: "#a3a3ad", fumble: "#ff7070", neutral: "#ffffff" };
   const lineHtml = m => {
     const d = opts.dice && parseDice(m.text);
@@ -1868,7 +1888,7 @@ function buildVisualNovel(settings, { preview = false } = {}) {
   const chapters = [{ title: only !== null && only > 0 ? sections[only]?.title || opts.title : opts.title || "세션 로그", at: 0 }];
   for (const m of items) {
     if (m.chat) {
-      scenes.push({ t: "chat", tm: chatSpan(m.items), msgs: m.items.map(x => ({ name: x.name, c: colorFor(x.color), html: lineHtml(x) })) });
+      scenes.push({ t: "chat", tm: chatSpan(m.items), msgs: m.items.map(x => ({ name: x.name, c: colorFor(x.color, "#15151c"), html: lineHtml(x) })) });
       continue;
     }
     if (m.block) {
@@ -1892,6 +1912,7 @@ function buildVisualNovel(settings, { preview = false } = {}) {
       c: colorFor(m.color),
       f: isImageUrl(m.face) && !m.narration && !system ? asset(m.face) : -1,
       n: m.narration || system ? 1 : 0,
+      fx: m.fx || undefined,
       box: box ? { label: (m.format === "secret" ? "🔒 " : "ℹ ") + m.tab, c: normalizeColor(m.tabSet?.color) || TAB_FORMAT_COLORS[m.format] } : 0,
     });
   }
@@ -1899,7 +1920,7 @@ function buildVisualNovel(settings, { preview = false } = {}) {
   const title = opts.title || "세션 로그";
   const data = {
     title, key: "nb-vn:" + title, assets, scenes, chapters,
-    sprite: vn.sprite || "2", place: vn.place || "above", size: vn.size || 90,
+    sprite: vn.sprite || "2", place: vn.place || "above", size: vn.size || 90, skin: vn.skin || "glass",
     lines: scenes.filter(s => s.t === "line").length,
     bg: [D.bg, mix(D.bg, "#6c5ce7", 0.75)],
   };
@@ -1911,13 +1932,14 @@ function buildVisualNovel(settings, { preview = false } = {}) {
 ${font.href ? `<link rel="stylesheet" href="${font.href}">` : ""}
 <style>${VN_CSS.replace("__FONT__", (font.stack ? font.stack + "," : "") + FONT_FALLBACK)}</style></head>
 <body${preview ? ' class="vn-preview"' : ""}>
-<div id="vn" tabindex="0" aria-label="${escapeHtml(title)}">
+<div id="vn" class="skin-${escapeHtml(vn.skin || "glass")}" tabindex="0" aria-label="${escapeHtml(title)}">
   <div class="vn-bg"></div><div class="vn-bg vn-bg2"></div>
   <div class="vn-sprites"></div>
   <div class="vn-chat" hidden><div class="vn-chat-head">💬 잡담</div><div class="vn-chat-list"></div></div>
   <div class="vn-box" hidden><div class="vn-name"></div><div class="vn-label"></div><img class="vn-face" alt="" hidden><div class="vn-text" aria-live="polite"></div><div class="vn-next" aria-hidden="true">▼</div></div>
   <div class="vn-cg" hidden><img alt=""><div class="vn-cap"></div></div>
   <div class="vn-chapter" hidden><div class="vn-chapter-t"></div></div>
+  <div class="vn-fx" aria-hidden="true"></div>
   <div class="vn-bar">
     <span class="vn-music" hidden></span>
     <button type="button" data-a="chat" class="vn-chat-btn" hidden title="잡담 창 (C)">💬<span class="vn-badge" hidden></span></button>
@@ -1963,8 +1985,29 @@ const VN_CSS = `
 .vn-sprite{position:absolute;bottom:0;height:100%;max-width:40vw;object-fit:contain;object-position:bottom;transform:translateX(-50%);transition:filter .3s,opacity .35s;filter:drop-shadow(0 10px 24px rgb(0 0 0/.45))}
 .vn-sprite.n3,.vn-sprite.n4{max-width:27vw}
 .vn-sprite.dim{filter:brightness(.5) drop-shadow(0 10px 24px rgb(0 0 0/.45))}
-.vn-sprite.enter{animation:vnin .35s}
-@keyframes vnin{from{opacity:0;transform:translate(-50%,10px)}}
+.vn-sprite.enter{animation:vnin .4s}
+.vn-sprite.leave{animation:vnout .4s forwards}
+.vn-sprite.jump{animation:vnjump .45s}
+@keyframes vnin{from{opacity:0;transform:translate(-50%,14px)}}
+@keyframes vnout{to{opacity:0;transform:translate(-50%,14px)}}
+@keyframes vnjump{30%{transform:translate(-50%,-6%)}60%{transform:translate(-50%,0)}75%{transform:translate(-50%,-2%)}}
+.vn-fx{position:absolute;inset:0;pointer-events:none;z-index:6;opacity:0}
+.vn-fx.flash{background:#fff;animation:vnflash .6s}
+.vn-fx.black{background:#000;animation:vnblack 1.4s}
+@keyframes vnflash{0%{opacity:.95}100%{opacity:0}}
+@keyframes vnblack{0%,35%{opacity:1}100%{opacity:0}}
+#vn.shake{animation:vnshake .5s}
+@keyframes vnshake{10%,50%,90%{transform:translate(-6px,2px)}30%,70%{transform:translate(6px,-2px)}}
+#vn.skin-paper .vn-box{background:#f4ecd8;color:#2b2418;border:1px solid #d6c7a1;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:0 10px 30px rgb(0 0 0/.35);border-radius:6px}
+#vn.skin-paper .vn-name{background:#3b2f20;color:#f4ecd8!important;border-color:#3b2f20;border-radius:4px}
+#vn.skin-paper .vn-dice{background:rgb(0 0 0/.06)}
+#vn.skin-game .vn-box{background:linear-gradient(rgb(20 24 60/.92),rgb(8 10 30/.92));border:3px solid #e8e8ff;border-radius:8px;box-shadow:0 0 0 3px #1a1d48,0 12px 40px rgb(0 0 0/.5)}
+#vn.skin-game .vn-name{background:#1a1d48;border:2px solid #e8e8ff;border-radius:6px;top:-1.1em}
+#vn.skin-minimal .vn-box{width:100vw;bottom:0;border-radius:0;border:0;background:linear-gradient(transparent,rgb(0 0 0/.78) 28%);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;padding-left:max(1.8em,calc(50vw - 460px));padding-right:max(1.8em,calc(50vw - 460px));padding-top:2.2em;height:calc(var(--boxh) + var(--boxb))}
+#vn.skin-minimal .vn-name{position:static;align-self:flex-start;background:none;border:0;box-shadow:none;padding:0;margin-bottom:.2em;font-size:1.05em}
+#vn.skin-light .vn-box{background:rgb(250 250 252/.9);color:#1d1d24;border-color:rgb(0 0 0/.08)}
+#vn.skin-light .vn-name{background:#fff;border-color:rgb(0 0 0/.1)}
+#vn.skin-light .vn-dice{background:rgb(0 0 0/.06)}
 .vn-box{position:absolute;left:50%;bottom:var(--boxb);transform:translateX(-50%);width:min(980px,94vw);height:var(--boxh);padding:1.4em 1.8em 1.2em;border-radius:18px;background:rgb(16 16 24/.82);border:1px solid rgb(255 255 255/.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);line-height:1.8;box-shadow:0 12px 40px rgb(0 0 0/.35);display:flex;flex-direction:column}
 .vn-box.narr{text-align:center}
 .vn-box.hasface{padding-left:calc(1.8em + 118px)}
@@ -2017,7 +2060,7 @@ const VN_CSS = `
 .vn-menu-btns{display:flex;gap:8px;margin-top:10px}
 .vn-player{position:absolute;width:1px;height:1px;left:-10px;top:-10px;overflow:hidden;opacity:0;pointer-events:none}
 @media (max-width:640px){#vn{--boxh:8.4em}.vn-box{padding:1.3em 1.1em 1em}.vn-box.hasface{padding-left:calc(1.1em + 74px)}.vn-face{width:64px;height:64px;left:.8em}.vn-sprite{max-width:52vw}.vn-sprite.n3,.vn-sprite.n4{max-width:34vw}.vn-bar button{padding:5px 9px;font-size:12px}.vn-music{display:none}.vn-chat{width:min(260px,72vw)}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.vn-sprite.leave{opacity:0}}
 `;
 
 // 내보낸 HTML 안에서 실행되는 플레이어 (이 함수 자체를 문자열로 넣는다)
@@ -2071,6 +2114,7 @@ function vnPlayer(D) {
           }
           seat[at] = { who: s.who, src: A[s.f], t: k, since: k };
         } else { seat[at].src = A[s.f]; seat[at].t = k; }
+        if (s.fx === "leave" && k < n) { seat[at] = null; if (active === s.who) active = null; }
       }
     }
     return { bg: bg, bgm: bgm, seat: seat, active: active, chats: chats };
@@ -2107,13 +2151,34 @@ function vnPlayer(D) {
     for (var j = 0; j < seats; j++) {
       var sl = st.seat[j];
       var img = box.querySelector('[data-seat="' + j + '"]');
-      if (!sl) { if (img) img.remove(); continue; }
+      // 내려가는 인물은 사라지는 효과 뒤에 지운다
+      if (img && (!sl || img.dataset.who !== sl.who)) { leave(img); img = null; }
+      if (!sl) continue;
+      var fresh = !img;
       if (!img) { img = document.createElement("img"); img.alt = ""; img.dataset.seat = j; box.appendChild(img); }
-      var fresh = img.dataset.who !== sl.who;
       img.dataset.who = sl.who;
       img.className = "vn-sprite n" + seats + (st.active && st.active !== sl.who ? " dim" : "") + (fresh ? " enter" : "");
       if (img.getAttribute("src") !== sl.src) img.src = sl.src;
       img.style.left = POS[j] + "%";
+    }
+  }
+
+  function leave(img) {
+    img.removeAttribute("data-seat");
+    img.classList.remove("enter", "jump");
+    img.classList.add("leave");
+    setTimeout(function () { img.remove(); }, 420);
+  }
+
+  // 대사마다 넣은 연출: 흔들림 · 번쩍임 · 암전 · 깡총
+  function playFx(s) {
+    if (!s.fx || skip || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var restart = function (el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+    if (s.fx === "shake") restart(root, "shake");
+    else if (s.fx === "flash" || s.fx === "black") { var f = q(".vn-fx"); f.className = "vn-fx"; restart(f, s.fx); }
+    else if (s.fx === "jump") {
+      var who = q('.vn-sprite[data-who="' + (window.CSS && CSS.escape ? CSS.escape(s.who) : s.who) + '"]');
+      if (who) restart(who, "jump");
     }
   }
 
@@ -2210,6 +2275,7 @@ function vnPlayer(D) {
       face.hidden = !useFace;
       if (useFace) { face.src = A[s.f]; box.classList.add("hasface"); }
       type(q(".vn-text"), s.html, instant);
+      if (!instant) playFx(s);
     } else if (s.t === "cg") {
       var cg = q(".vn-cg");
       cg.hidden = false;
@@ -2418,7 +2484,7 @@ function readOpts() {
     paren: $("optParen").checked,
     sticky: $("optSticky").checked,
     stripTag: $("optStripTag").checked,
-    vn: { sprite: radio("optVnSprite") || "2", place: radio("optVnPlace") || "above", size: num("optVnSize", 40, 120, 90), chat: $("optVnChat").value },
+    vn: { sprite: radio("optVnSprite") || "2", place: radio("optVnPlace") || "above", size: num("optVnSize", 40, 120, 90), chat: $("optVnChat").value, skin: $("optVnSkin").value },
     foldChat: $("optFoldChat").checked,
     chatGap: num("optChatGap", 1, 30, 5),
     search: $("pvSearch").value.trim(),
@@ -3139,6 +3205,7 @@ function openEditor(i) {
   for (const tab of Object.keys(state.tabs)) tabSel.add(new Option(tab, tab));
   tabSel.value = m.tab;
   $("edKind").value = m.e.kind || "auto";
+  $("edFx").value = m.e.fx || "";
   $("edText").value = m.e.text ?? m.text;
   $("edTitle").textContent = `대사 수정 · #${lineNoBefore(i) + 1}`;
   renderFaceChoices(speaker, m.e.face);
@@ -3192,6 +3259,7 @@ function saveEditor() {
   m.e.text = text === m.text ? undefined : text;
   m.e.face = face === "auto" ? undefined : face;
   m.e.kind = kind === "auto" ? undefined : kind;
+  m.e.fx = $("edFx").value || undefined;
   m.tab = $("edTab").value || m.tab;
   rebuildIndex();
 }
