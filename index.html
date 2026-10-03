@@ -248,6 +248,17 @@
   .bgmcard b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #bkTypes input:disabled + span { opacity: .35; }
   .ed-grid { display: grid; gap: 0 12px; }
+  .bu-grid { display: grid; gap: 8px 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .bu-grid .field { grid-template-columns: 1fr; gap: 4px; padding: 0; align-content: start; }
+  .bu-grid select, .bu-grid input { min-width: 0; width: 100%; }
+  .bu-range, .bu-act { display: flex; align-items: center; gap: 6px; }
+  .bu-range input { width: 0; flex: 1; min-width: 56px; }
+  .bu-act select { flex: 1; min-width: 0; }
+  #bulk .label { margin-top: 4px; font-weight: 700; }
+  #loadReport { list-style: none; margin: 8px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 2px; }
+  #loadReport li { display: flex; gap: 6px; }
+  #loadReport li::before { content: "✓"; color: var(--accent); font-weight: 700; flex: none; }
+  #loadReport li.warn::before { content: "!"; color: #e0a100; }
 
   /* ---- 미리보기 ---- */
   #previewWrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
@@ -371,6 +382,7 @@
         <input type="file" id="file" accept=".html,.htm,.txt,.json" hidden />
         <input type="file" id="appendFile" accept=".html,.htm,.txt,.json" hidden />
         <div id="fileName"></div>
+        <ul id="loadReport" hidden aria-label="불러온 결과"></ul>
         <div class="buttons" style="margin-top:4px">
           <button type="button" class="ghost small" id="btnSample2" style="padding-left:0">처음이라면 → 예시 로그로 체험해보기</button>
           <button type="button" class="secondary small" id="btnAppend" disabled title="다른 로그 파일을 지금 로그 뒤에 새 섹션으로 붙여요">＋ 다른 로그 이어붙이기</button>
@@ -725,6 +737,7 @@
           <button type="button" class="ghost small icon" id="pvPrev" aria-label="이전 결과">↑</button>
           <button type="button" class="ghost small icon" id="pvNext" aria-label="다음 결과">↓</button>
         </div>
+        <button type="button" class="secondary small" id="btnBulk" disabled title="찾아 바꾸기 · 여러 대사 한꺼번에 고치기">🛠 일괄 편집</button>
         <div class="seg" role="radiogroup" aria-label="미리보기 밝기">
           <label title="밝게"><input type="radio" name="pvMode" value="light" /><span>☀</span></label>
           <label title="어둡게"><input type="radio" name="pvMode" value="dark" /><span>🌙</span></label>
@@ -818,11 +831,54 @@
       <div class="buttons">
         <button type="button" class="danger small" id="edDelete">이 대사 삭제</button>
         <button type="button" class="secondary small" id="edReset">원래대로</button>
+        <button type="button" class="secondary small" id="edBulk" title="이 대사부터 여러 대사를 한꺼번에">여기부터 일괄…</button>
       </div>
       <div class="buttons">
         <button type="button" class="secondary" id="edCancel">닫기</button>
         <button type="button" id="edSave">저장</button>
       </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="bulk" aria-labelledby="buTitle">
+  <form method="dialog">
+    <h2 id="buTitle">🛠 일괄 편집</h2>
+    <div class="label">대상</div>
+    <div class="bu-grid">
+      <div class="field"><span>대사 번호</span>
+        <div class="bu-range"><span>#</span><input type="number" id="buFrom" min="1" placeholder="처음" aria-label="시작 번호" /><span>~ #</span><input type="number" id="buTo" min="1" placeholder="끝" aria-label="끝 번호" /></div>
+      </div>
+      <div class="field"><span>탭</span><select id="buTab"></select></div>
+      <div class="field"><span>화자</span><select id="buSpeaker"></select></div>
+    </div>
+    <p class="hint" style="margin:0" id="buCount"></p>
+
+    <div class="label">찾아 바꾸기</div>
+    <div class="bu-grid two">
+      <input type="text" id="buFind" placeholder="찾을 말" aria-label="찾을 말" />
+      <input type="text" id="buReplace" placeholder="바꿀 말 (비우면 지움)" aria-label="바꿀 말" />
+    </div>
+    <div class="buttons">
+      <label class="row"><input type="checkbox" id="buRegex" /> 정규식</label>
+      <span class="hint" style="margin:0" id="buFindInfo"></span>
+      <button type="button" class="small" id="buDoReplace" style="margin-left:auto">모두 바꾸기</button>
+    </div>
+
+    <div class="label">대상 대사 한꺼번에</div>
+    <div class="bu-grid">
+      <div class="field"><span>탭 옮기기</span><div class="bu-act"><select id="buSetTab"></select><button type="button" class="secondary small" data-bulk="tab">적용</button></div></div>
+      <div class="field"><span>화자 바꾸기</span><div class="bu-act"><select id="buSetSpeaker"></select><button type="button" class="secondary small" data-bulk="speaker">적용</button></div></div>
+      <div class="field"><span>종류</span><div class="bu-act"><select id="buSetKind"><option value="auto">자동</option><option value="dialog">대사</option><option value="narration">나레이션</option></select><button type="button" class="secondary small" data-bulk="kind">적용</button></div></div>
+    </div>
+    <div class="buttons">
+      <button type="button" class="danger small" data-bulk="hide">삭제</button>
+      <button type="button" class="secondary small" data-bulk="show">되살리기</button>
+      <button type="button" class="secondary small" data-bulk="reset" title="고친 내용·화자·표정·종류·연출을 원래대로">원래대로</button>
+    </div>
+    <div class="dialog-actions">
+      <p class="hint" style="margin:0">한 번에 바꾼 것도 <b>↶ 되돌리기</b>(Ctrl+Z)로 되돌릴 수 있어요.</p>
+      <div class="buttons"><button type="button" class="secondary" id="buClose">닫기</button></div>
     </div>
   </form>
 </dialog>
@@ -2574,7 +2630,7 @@ function showLoaded() {
 }
 function enableExports() {
   for (const id of ["btnDownload", "btnDownload2", "btnOpen", "btnCopyHtml", "btnCopyTistory", "btnCopyTistory2", "btnExportWork", "btnZip",
-    "btnAppend", "btnVnDownload", "btnVnOpen", "btnVnQuick"]) $(id).disabled = false;
+    "btnAppend", "btnVnDownload", "btnVnOpen", "btnVnQuick", "btnBulk"]) $(id).disabled = false;
 }
 
 /* ---------------- 설정 패널 탭 ---------------- */
@@ -3078,7 +3134,33 @@ function update({ keepScroll = true } = {}) {
     $("deletedInfo").innerHTML = `삭제한 대사 ${deleted}개 · <a href="#" id="restoreAll">모두 되살리기</a>`;
     renderSectionSelect();
     syncInsertHint();
+    renderLoadReport();
   }, 120);
+}
+
+// 불러온 결과 확인: 실제 로그가 제대로 읽혔는지 한눈에
+function renderLoadReport() {
+  const el = $("loadReport");
+  const lines = state.messages.filter(isLine);
+  el.hidden = !lines.length;
+  if (!lines.length) return;
+  const items = [];
+  const add = (text, warn) => items.push(`<li${warn ? ' class="warn"' : ""}><span>${text}</span></li>`);
+  const hidden = lines.filter(m => m.e.hidden).length;
+  add(`대사 <b>${lines.length}</b>개${hidden ? ` (삭제 ${hidden})` : ""}`);
+  add("탭: " + Object.entries(state.tabs).map(([t, v]) => `${escapeHtml(t)} ${v.count || 0}`).join(" · "));
+  const people = Object.keys(state.chars);
+  const withImg = people.filter(n => isImageUrl(charFaces(n)[0]?.iconUrl)).length;
+  add(`등장인물 <b>${people.length}</b>명 · 이미지 있는 인물 ${withImg}명`, people.length && !withImg);
+  const timed = lines.filter(m => m.time).length;
+  if (timed) add(`시각 정보 있음 (${timed === lines.length ? "모든 대사" : `${timed}개 대사`}) → 잡담을 시각 기준으로 묶어요`);
+  else add("시각 정보 없음 → 잡담은 바로 붙은 것끼리 묶어요. 룸 링크로 채팅 기록을 가져오면 시각이 채워져요", true);
+  const faced = lines.filter(m => m.roomFace).length;
+  if (faced) add(`룸 채팅에서 실제 표정이 연결된 대사 ${faced}개`);
+  const blocks = state.messages.filter(m => !isLine(m));
+  if (blocks.length) add(Object.entries(countBy(blocks, blockType).reduce((o, [k, n]) => (o[k] = n, o), {})).map(([k, n]) => `${TYPE_NAMES[k]} ${n}`).join(" · "));
+  const html = items.join("");
+  if (el.innerHTML !== html) el.innerHTML = html;
 }
 
 let searchIndex = -1;
@@ -3279,6 +3361,100 @@ function changeWithUndo(i, next, msg) {
 }
 $("edReset").addEventListener("click", () => changeWithUndo(editing, () => ({}), "대사를 원래대로 돌렸어요"));
 $("edDelete").addEventListener("click", () => changeWithUndo(editing, e => ({ ...e, hidden: true }), "대사를 삭제했어요"));
+
+/* ---------------- 일괄 편집 ---------------- */
+
+function openBulk(fromLine) {
+  const fill = (sel, items, first) => {
+    const keep = sel.value;
+    sel.innerHTML = "";
+    if (first) sel.add(new Option(first, ""));
+    for (const [v, label] of items) sel.add(new Option(label, v));
+    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  };
+  const tabs = Object.keys(state.tabs).map(t => [t, `${t} (${state.tabs[t].count || 0})`]);
+  const people = Object.keys(state.chars).map(n => [n, state.chars[n].rename ? `${state.chars[n].rename} (${n})` : n]);
+  fill($("buTab"), tabs, "모든 탭");
+  fill($("buSpeaker"), people, "모든 화자");
+  fill($("buSetTab"), Object.keys(state.tabs).map(t => [t, t]));
+  fill($("buSetSpeaker"), people);
+  if (fromLine) { $("buFrom").value = fromLine; $("buTo").value = ""; }
+  $("bulk").showModal();
+  syncBulk();
+}
+// 대상: 번호 범위 · 탭 · 화자에 맞는 대사의 위치 목록
+function bulkTargets() {
+  const from = +$("buFrom").value || 1, to = +$("buTo").value || Infinity;
+  const tab = $("buTab").value, who = $("buSpeaker").value;
+  const out = [];
+  let no = 0;
+  state.messages.forEach((m, i) => {
+    if (!isLine(m)) return;
+    no++;
+    if (no < from || no > to) return;
+    if (tab && m.tab !== tab) return;
+    if (who && (m.e.speaker ?? m.name) !== who) return;
+    out.push(i);
+  });
+  return out;
+}
+function bulkPattern() {
+  const find = $("buFind").value;
+  if (!find) return null;
+  try { return new RegExp($("buRegex").checked ? find : find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"); }
+  catch (_) { return false; }
+}
+function syncBulk() {
+  const targets = bulkTargets();
+  $("buCount").textContent = `대상 대사 ${targets.length}개`;
+  const re = bulkPattern();
+  let hits = 0, lines = 0;
+  if (re) for (const i of targets) {
+    const m = state.messages[i], n = ((m.e.text ?? m.text).match(re) || []).length;
+    if (n) { hits += n; lines++; }
+  }
+  $("buFindInfo").textContent = re === false ? "정규식이 올바르지 않아요" : re ? `${lines}개 대사에서 ${hits}곳` : "";
+  $("buDoReplace").disabled = !hits;
+}
+function bulkChange(fn, msg) {
+  const targets = bulkTargets();
+  let n = 0;
+  for (const i of targets) if (fn(state.messages[i]) !== false) n++;
+  if (!n) { toast("바뀐 대사가 없어요"); return; }
+  rebuildIndex();
+  undoStack.commit();
+  update();
+  syncBulk();
+  toast(`${n}개 대사를 ${msg}`, { label: "되돌리기", run: () => undoStack.go(-1) });
+}
+["buFrom", "buTo", "buTab", "buSpeaker", "buFind", "buRegex"].forEach(id => $(id).addEventListener("input", syncBulk));
+$("buDoReplace").addEventListener("click", () => {
+  const re = bulkPattern();
+  if (!re) return;
+  const to = $("buReplace").value;
+  bulkChange(m => {
+    const cur = m.e.text ?? m.text, next = cur.replace(re, $("buRegex").checked ? to : to.replace(/\$/g, "$$$$"));
+    if (next === cur) return false;
+    m.e.text = next === m.text ? undefined : next;
+  }, "바꿨어요");
+});
+document.querySelectorAll("[data-bulk]").forEach(b => b.addEventListener("click", () => {
+  const act = b.dataset.bulk;
+  if (act === "hide") bulkChange(m => m.e.hidden ? false : (m.e.hidden = true), "삭제했어요");
+  else if (act === "show") bulkChange(m => !m.e.hidden ? false : void delete m.e.hidden, "되살렸어요");
+  else if (act === "reset") bulkChange(m => Object.keys(m.e).length ? void (m.e = {}) : false, "원래대로 돌렸어요");
+  else if (act === "tab") { const t = $("buSetTab").value; bulkChange(m => m.tab === t ? false : void (m.tab = t), `'${t}' 탭으로 옮겼어요`); }
+  else if (act === "speaker") {
+    const w = $("buSetSpeaker").value;
+    bulkChange(m => (m.e.speaker ?? m.name) === w ? false : void (m.e.speaker = w === m.name ? undefined : w), "다른 화자로 바꿨어요");
+  } else if (act === "kind") {
+    const k = $("buSetKind").value;
+    bulkChange(m => (m.e.kind || "auto") === k ? false : void (m.e.kind = k === "auto" ? undefined : k), "바꿨어요");
+  }
+}));
+$("btnBulk").addEventListener("click", () => openBulk());
+$("edBulk").addEventListener("click", () => { const from = lineNoBefore(editing) + 1; $("editor").close(); openBulk(from); });
+$("buClose").addEventListener("click", () => $("bulk").close());
 
 // 위·아래로 옮기기 (대화상자는 열어둔 채로)
 function moveItem(i, step) {
