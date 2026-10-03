@@ -526,6 +526,8 @@
             </select>
           </div>
           <label class="row"><input type="checkbox" id="optNarrSplit" /> 나레이션을 문장마다 줄 나누기</label>
+          <label class="row"><input type="checkbox" id="optNarrFace" /> 나레이션 화자도 스탠딩·아이콘 보이기</label>
+          <p class="hint" style="margin:0 0 6px">끄면(기본) 나레이션으로 지정한 인물은 비밀·정보 탭, 메시지, 비주얼 노벨에서도 스탠딩이 나오지 않아요. 켜면 비주얼 노벨에서 나레이션 중에도 스탠딩이 서요.</p>
           <label class="row"><input type="checkbox" id="optMerge" checked /> 같은 사람의 연속 발언 묶기</label>
           <label class="row"><input type="checkbox" id="optDivider" /> 대사 사이에 구분선</label>
           <label class="row"><input type="checkbox" id="optDice" checked /> 다이스 결과 강조</label>
@@ -1371,8 +1373,11 @@ function resolveMessages(settings) {
     // 캐릭터의 나레이션 설정은 메인 형식 탭에서만 적용 (대사별로 직접 고른 건 어디서나)
     const format = tabSet.format || "main";
     const narration = e.kind === "narration" || (e.kind !== "dialog" && c.narration && format === "main");
+    // 나레이션 화자는 스탠딩·아이콘을 숨긴다: 정보·비밀 탭과 비주얼 노벨에서도 (잡담 탭 수다는 그대로). "나레이션도 스탠딩 보이기"로 끌 수 있음
+    const narrator = e.kind === "narration" || (e.kind !== "dialog" && c.narration && format !== "other");
+    if (narrator && !opts.narrFace) face = "";
     out.push({
-      i, no: lineNo, sec, tab: m.tab, text, face, narration, speaker,
+      i, no: lineNo, sec, tab: m.tab, text, face, narration, narrator, speaker,
       format, tabSet, narrStyle: c.narrStyle || "",
       name: (c.rename || speaker).trim() || speaker,
       color: c.color || m.color, time: m.time || 0, fx: e.fx || "",
@@ -2081,7 +2086,7 @@ function buildVisualNovel(settings, { preview = false } = {}) {
       name: m.narration || system ? "" : m.name,
       who: m.speaker,
       c: colorFor(m.color),
-      f: isImageUrl(m.face) && !m.narration && !system ? asset(m.face) : -1,
+      f: isImageUrl(m.face) && (!m.narration || opts.narrFace) && !system ? asset(m.face) : -1,
       // 로그 파일에 든 작은 아이콘(80px)은 스탠딩으로 키우면 깨지므로 대화창 옆 얼굴로
       ic: smallIcons.has(m.face) ? 1 : undefined,
       n: m.narration || system ? 1 : 0,
@@ -2286,7 +2291,7 @@ function vnPlayer(D) {
       else if (s.t === "bgm") bgm = s;
       else if (s.t === "chat") chats++;
       else if (s.t === "chapter") { seat = []; active = null; }
-      else if (s.t === "line" && !s.n) {
+      else if (s.t === "line" && (!s.n || s.f >= 0)) {
         active = s.who;
         if (s.f < 0 || !seats || s.ic) continue;
         var at = -1;
@@ -2699,6 +2704,7 @@ function readOpts() {
     iconSize: num("optIconSize", 32, 200, 72),
     narr: $("optNarr").value,
     narrSplit: $("optNarrSplit").checked,
+    narrFace: $("optNarrFace").checked,
     showTabs: checkedValues("optShowTabs"),
     mergeBox: $("optMergeBox").checked,
     grayOther: $("optGrayOther").checked,

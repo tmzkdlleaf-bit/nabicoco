@@ -252,3 +252,20 @@ test("메시지 판별: 잡담은 전부, 비밀 탭은 짧게 주고받은 것�
   assert.equal(r.never, 0);
   await ctx.close();
 });
+
+test("나레이션 화자는 비밀 탭·비주얼 노벨에서도 스탠딩이 안 나오고, 옵션으로 켤 수 있다", async () => {
+  const { ctx, page } = await open();
+  await page.click("#btnSample");
+  await settled(page);
+  const r = await page.evaluate(() => {
+    const who = resolveMessages(settings()).find(m => m.face && m.format === "secret")?.speaker;
+    state.chars[who].narration = true;
+    const off = resolveMessages(settings()).filter(m => m.speaker === who && m.format !== "other").every(m => !m.face);
+    const vnOff = JSON.parse(buildVisualNovel(settings()).match(/\}\)\((\{"title"[\s\S]*?\})\);<\/script>/)[1]).scenes.filter(s => s.who === who).every(s => s.f < 0);
+    document.getElementById("optNarrFace").checked = true;
+    const on = resolveMessages(settings()).some(m => m.speaker === who && m.face);
+    return { who, off, vnOff, on };
+  });
+  assert.ok(r.who && r.off && r.vnOff && r.on, JSON.stringify(r));
+  await ctx.close();
+});
