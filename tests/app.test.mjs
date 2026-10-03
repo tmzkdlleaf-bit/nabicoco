@@ -190,3 +190,47 @@ test("휴대폰 너비에서 가로 스크롤이 생기지 않는다", async () 
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   await ctx.close();
 });
+
+// 새 코코포리아 로그(<article> 형식, 아이콘 내장)를 탭별로 나눠 담은 ZIP
+function storedZip(files) {
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = b => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const [name, text] of files) {
+    const n = Buffer.from(name), d = Buffer.from(text), c = crc(d);
+    const l = Buffer.alloc(30); l.writeUInt32LE(0x04034b50, 0); l.writeUInt16LE(20, 4); l.writeUInt16LE(0x800, 6); l.writeUInt32LE(c, 14); l.writeUInt32LE(d.length, 18); l.writeUInt32LE(d.length, 22); l.writeUInt16LE(n.length, 26);
+    const h = Buffer.alloc(46); h.writeUInt32LE(0x02014b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(20, 6); h.writeUInt16LE(0x800, 8); h.writeUInt32LE(c, 16); h.writeUInt32LE(d.length, 20); h.writeUInt32LE(d.length, 24); h.writeUInt16LE(n.length, 28); h.writeUInt32LE(offset, 42);
+    locals.push(l, n, d); centrals.push(h, n);
+    offset += 30 + n.length + d.length;
+  }
+  const cd = Buffer.concat(centrals), e = Buffer.alloc(22);
+  e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(files.length, 8); e.writeUInt16LE(files.length, 10); e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, e]);
+}
+const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const articleLog = (tab, rows) => `<!DOCTYPE html><html><head><title>시험 세션 [${tab}]</title><style>.avatar-image-0 { background-image: url("${PNG}"); }</style></head><body><main>`
+  + rows.map(([t, name, text, roll]) => `<article class="message" data-channel="x"><span class="avatar avatar-image-0"></span><div class="message-content"><div class="message-header">`
+    + `<span class="speaker" style="--speaker-color:#e91e63">${name}</span><time class="timestamp" datetime="${t}">x</time><span class="channel-name">[${tab}]</span></div>`
+    + `<div class="message-text">${text}</div>${roll ? `<span class="roll-result">${roll}</span>` : ""}</div></article>`).join("")
+  + `<article class="message system" data-channel="main"><div class="message-header"><span class="channel-name">[${tab}]</span></div><div class="message-text">[ 렌 ] 이성 : 70 → 69</div></article></main></body></html>`;
+
+test("새 형식 로그 ZIP: 탭별 파일을 시각 순서로 합치고 아이콘을 한 번만 넣는다", async () => {
+  const file = join(tmp, "log.zip");
+  writeFileSync(file, storedZip([
+    ["시험 세션[메인].html", articleLog("메인", [["2026-08-15T06:00:00Z", "렌", "첫 대사"], ["2026-08-15T06:02:00Z", "렌", "CC<=50", "(1D100<=50) ＞ 23 ＞ 성공"]])],
+    ["시험 세션[잡담].html", articleLog("잡담", [["2026-08-15T06:01:00Z", "토미", "잡담 한마디"]])],
+  ]));
+  const { ctx, page, errors } = await open();
+  await page.setInputFiles("#file", file);
+  await settled(page);
+  const ls = await lines(page);
+  assert.deepEqual(ls.filter(m => m.name !== "system").map(m => m.text), ["첫 대사", "잡담 한마디", "CC<=50 (1D100<=50) ＞ 23 ＞ 성공"]);
+  assert.equal(await page.evaluate(() => state.fileTitle), "시험 세션");
+  assert.equal(await page.evaluate(() => state.tabs["잡담"].format), "other");
+  const html = await page.evaluate(() => buildOutput(settings(), "page"));
+  assert.equal(html.split(PNG).length - 1, 1, "아이콘은 CSS에 한 번만");
+  assert.ok(!(await page.evaluate(() => buildOutput(settings(), "tistory"))).includes("data:image/png"));
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

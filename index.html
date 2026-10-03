@@ -377,10 +377,10 @@
       <section class="pane" data-pane="load">
         <div id="drop" tabindex="0" role="button" aria-label="로그 파일 선택">
           <strong>로그 파일을 끌어다 놓거나 클릭</strong>
-          코코포리아 → 룸 메뉴 → 로그 출력 (.html) · 작업 파일(.json)도 돼요
+          코코포리아 → 룸 메뉴 → 로그 출력 (.html · .zip) · 작업 파일(.json)도 돼요
         </div>
-        <input type="file" id="file" accept=".html,.htm,.txt,.json" hidden />
-        <input type="file" id="appendFile" accept=".html,.htm,.txt,.json" hidden />
+        <input type="file" id="file" accept=".html,.htm,.txt,.json,.zip" hidden />
+        <input type="file" id="appendFile" accept=".html,.htm,.txt,.json,.zip" hidden />
         <div id="fileName"></div>
         <ul id="loadReport" hidden aria-label="불러온 결과"></ul>
         <div class="buttons" style="margin-top:4px">
@@ -972,6 +972,7 @@ function parseLog(source) {
 
 function parseHtmlLog(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
+  if (doc.querySelector("article.message")) return parseArticleLog(doc);
   const messages = [];
   for (const p of doc.querySelectorAll("p")) {
     const spans = p.querySelectorAll(":scope > span");
@@ -986,6 +987,40 @@ function parseHtmlLog(html) {
     const time = parseTime(stamp, messages.length ? messages[messages.length - 1].time : 0);
     messages.push({ tab: tab || "main", name, text, color, ...(time ? { time } : {}) });
   }
+  return messages;
+}
+
+// 새 코코포리아 로그 (2026~): <article class="message" data-channel>마다 아이콘·화자·시각·탭·본문·주사위 결과.
+// 아이콘은 <style>의 .avatar-image-N { background-image: url(data:...) } 에 한 번씩만 들어 있다.
+// 아이콘은 messages.media에 모아 두고, 대사에는 "그 대사를 보낼 때 쓴 아이콘"을 media:N으로 적는다.
+function parseArticleLog(doc) {
+  const css = [...doc.querySelectorAll("style")].map(s => s.textContent).join("\n");
+  const avatars = {};
+  for (const m of css.matchAll(/\.avatar-image-(\d+)\s*\{[^}]*?url\(\s*["']?(data:image\/[^"')]+)["']?\s*\)/g)) avatars[m[1]] = m[2];
+  const media = [], mediaIndex = new Map();
+  const ref = url => {
+    if (!mediaIndex.has(url)) { mediaIndex.set(url, media.length); media.push(url); }
+    return "media:" + mediaIndex.get(url);
+  };
+  const messages = [];
+  for (const a of doc.querySelectorAll("article.message")) {
+    const tab = (a.querySelector(".channel-name")?.textContent || "").trim().replace(/^\[(.*)\]$/, "$1").trim() || a.dataset.channel || "main";
+    const system = a.classList.contains("system");
+    const speaker = a.querySelector(".speaker");
+    const name = system ? "system" : (speaker?.textContent || "").trim();
+    let text = (a.querySelector(".message-text")?.textContent || "").replace(/\s+$/, "").replace(/^\n+/, "");
+    const roll = (a.querySelector(".roll-result")?.textContent || "").trim();
+    if (roll) text = !text.trim() ? roll : text + (roll.includes("\n") ? "\n" : " ") + roll;
+    if (!text.trim()) continue;
+    const color = normalizeColor((speaker?.getAttribute("style") || "").match(/--speaker-color\s*:\s*([^;]+)/)?.[1]?.trim()) || "#888888";
+    const time = Date.parse(a.querySelector("time")?.getAttribute("datetime") || "") || 0;
+    const av = a.querySelector(".avatar")?.className.match(/avatar-image-(\d+)/)?.[1];
+    const msg = { tab, name, text, color };
+    if (time) msg.time = time;
+    if (av && avatars[av]) msg.roomFace = ref(avatars[av]);
+    messages.push(msg);
+  }
+  messages.media = media;
   return messages;
 }
 
@@ -1274,7 +1309,7 @@ function guessTabFormat(tab) {
   if (/^(main|메인|メイン|主要)$/.test(t)) return "main";
   if (/^(info|정보|情報|信息)$/.test(t)) return "info";
   if (/^(other|잡담|사담|雑談|闲聊)$/.test(t)) return "other";
-  if (/^(secret|비밀|秘匿|秘密)/.test(t)) return "secret";
+  if (/(secret|비밀|秘匿|秘密)/.test(t)) return "secret";
   return "main";
 }
 
@@ -1320,8 +1355,8 @@ function resolveMessages(settings) {
     } else if (tagged) {
       face = tagged.face.iconUrl;
       lastFace[speaker] = face;
-    } else if (isImageUrl(m.roomFace) && !e.speaker) {
-      face = m.roomFace;
+    } else if (isImageUrl(mediaUrl(m.roomFace)) && !e.speaker) {
+      face = mediaUrl(m.roomFace);
       lastFace[speaker] = face;
     } else {
       face = (opts.sticky && lastFace[speaker]) || defaultFace;
@@ -1620,6 +1655,8 @@ function buildOutput(settings, mode) {
   };
   const content = (m, g) => dice(m, g.color) || body(m, g);
 
+  const dataAv = new Map();
+  buildOutput.droppedData = false;
   const avatar = (g, size) => {
     if (opts.icon === "none") return "";
     const tall = opts.icon === "standing";
@@ -1627,7 +1664,17 @@ function buildOutput(settings, mode) {
     const radius = opts.icon === "circle" ? "50%" : tall ? "12px" : Math.round(size / 4.5) + "px";
     const box = { display: "block", flex: "none", width: w + "px", height: h + "px", borderRadius: radius, margin: 0 };
     const klass = cls("nb-av" + (tall ? " nb-tall" : ""));
-    if (isImageUrl(g.face)) {
+    // 파일 안에 든 아이콘(data:)은 같은 그림을 대사마다 넣지 않고 CSS에 한 번만 넣는다.
+    // 티스토리 코드에는 <style>을 못 쓰므로 빼고(첫 글자 아이콘으로) 알려 준다.
+    if (/^data:/i.test(g.face || "")) {
+      if (inline) { buildOutput.droppedData = true; }
+      else {
+        if (!dataAv.has(g.face)) dataAv.set(g.face, dataAv.size);
+        return `<span class="nb-av${tall ? " nb-tall" : ""} nb-d${dataAv.get(g.face)}" role="img" aria-label="${escapeHtml(g.name)}" style="${css({ ...box,
+          backgroundSize: opts.avPlain && tall ? "contain" : "cover", backgroundPosition: "top center", backgroundRepeat: "no-repeat",
+          border: opts.avPlain ? 0 : "1px solid", borderColor: opts.avPlain ? "" : tok("line"), backgroundColor: opts.avPlain ? "transparent" : tok("paper") })}"></span>`;
+      }
+    } else if (isImageUrl(g.face)) {
       return `<img${klass} src="${escapeHtml(g.face)}" alt="${escapeHtml(g.name)}" loading="lazy" style="${css({ ...box,
         objectFit: opts.avPlain && tall ? "contain" : "cover", objectPosition: "top center", maxWidth: "none", padding: 0, boxShadow: "none",
         border: opts.avPlain ? 0 : "1px solid", borderColor: opts.avPlain ? "" : tok("line"), background: opts.avPlain ? "transparent" : tok("paper") })}">`;
@@ -1843,6 +1890,7 @@ function buildOutput(settings, mode) {
     + `:root[data-nb-theme=dark]{color-scheme:dark;${vars(1)}}`
     + `html,body{margin:0;background:var(--nb-bg)}html{scroll-behavior:smooth}`
     + `.nb-g{content-visibility:auto;contain-intrinsic-size:auto 120px}`
+    + [...dataAv].map(([u, k]) => `.nb-d${k}{background-image:url("${u.replace(/["\\\n]/g, "")}")}`).join("")
     + `@media (max-width:600px){.nb-av{width:min(56px,100%)!important;height:56px!important}.nb-av.nb-tall{height:84px!important}.nb-root{padding-left:12px!important;padding-right:12px!important}}`
     + `.nb-btn{position:fixed;z-index:9;width:44px;height:44px;border-radius:50%;border:1px solid var(--nb-line);background:var(--nb-paper);color:var(--nb-text);font-size:19px;cursor:pointer;box-shadow:0 2px 10px rgb(0 0 0/.15)}`
     + `.nb-toggle{top:14px;right:14px}`
@@ -1940,6 +1988,7 @@ function buildVisualNovel(settings, { preview = false } = {}) {
       : formatText(m.text, { ...opts, search: "" }, "#a0a0aa");
   };
 
+  const smallIcons = new Set(state.media);
   const scenes = [];
   const chapters = [{ title: only !== null && only > 0 ? sections[only]?.title || opts.title : opts.title || "세션 로그", at: 0 }];
   for (const m of items) {
@@ -1967,6 +2016,8 @@ function buildVisualNovel(settings, { preview = false } = {}) {
       who: m.speaker,
       c: colorFor(m.color),
       f: isImageUrl(m.face) && !m.narration && !system ? asset(m.face) : -1,
+      // 로그 파일에 든 작은 아이콘(80px)은 스탠딩으로 키우면 깨지므로 대화창 옆 얼굴로
+      ic: smallIcons.has(m.face) ? 1 : undefined,
       n: m.narration || system ? 1 : 0,
       fx: m.fx || undefined,
       box: box ? { label: (m.format === "secret" ? "🔒 " : "ℹ ") + m.tab, c: normalizeColor(m.tabSet?.color) || TAB_FORMAT_COLORS[m.format] } : 0,
@@ -2159,7 +2210,7 @@ function vnPlayer(D) {
       else if (s.t === "chapter") { seat = []; active = null; }
       else if (s.t === "line" && !s.n) {
         active = s.who;
-        if (s.f < 0 || !seats) continue;
+        if (s.f < 0 || !seats || s.ic) continue;
         var at = -1;
         for (var j = 0; j < seats; j++) if (seat[j] && seat[j].who === s.who) at = j;
         if (at < 0) {
@@ -2327,7 +2378,7 @@ function vnPlayer(D) {
       label.style.color = s.box ? s.box.c : "";
       box.style.borderColor = s.box ? s.box.c : "";
       var face = q(".vn-face");
-      var useFace = D.sprite === "face" && s.f >= 0;
+      var useFace = (D.sprite === "face" || (s.ic && D.sprite !== "none")) && s.f >= 0;
       face.hidden = !useFace;
       if (useFace) { face.src = A[s.f]; box.classList.add("hasface"); }
       type(q(".vn-text"), s.html, instant);
@@ -2498,7 +2549,9 @@ function vnPlayer(D) {
  * ================================================================ */
 
 const $ = id => document.getElementById(id);
-const state = { messages: [], fileTitle: "", tabs: {}, chars: {}, library: [], roomMessages: [], cursor: -1 };
+// media: 로그 파일 안에 들어 있던 아이콘(data URL). 대사에는 "media:N"으로만 적어서 되돌리기·자동 저장이 무거워지지 않게 한다
+const state = { messages: [], fileTitle: "", tabs: {}, chars: {}, library: [], media: [], roomMessages: [], cursor: -1 };
+const mediaUrl = u => typeof u === "string" && u.startsWith("media:") ? state.media[+u.slice(6)] || "" : u;
 
 const radio = name => document.querySelector(`input[name="${name}"]:checked`)?.value;
 const checkedValues = name => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
@@ -2580,7 +2633,40 @@ async function copyText(text, msg) {
 
 function titleFromSource(text, fileName) {
   const titleMatch = text.match(/<title>([\s\S]*?)<\/title>/i);
-  return (titleMatch ? titleMatch[1].replace(/^ココフォリア\s*-\s*/, "").trim() : "") || fileName.replace(/\.(html?|txt|json)$/i, "");
+  return (titleMatch ? titleMatch[1].replace(/^ココフォリア\s*-\s*/, "").replace(/\s*\[(すべて|全て|全部|전체|모두|all)\]\s*$/i, "").trim() : "")
+    || fileName.replace(/\.(html?|txt|json|zip)$/i, "");
+}
+
+// 로그 파일 안의 아이콘을 state.media로 옮긴다. 이어 붙일 때는 번호를 뒤로 민다.
+function adoptMedia(messages, append) {
+  const list = messages.media || [];
+  if (!append) {
+    state.media = [];
+    state.library = state.library.filter(l => !l.fromLog);
+  }
+  if (!list.length) return;
+  const map = list.map(url => {
+    let k = state.media.indexOf(url);
+    if (k < 0) { k = state.media.length; state.media.push(url); }
+    return "media:" + k;
+  });
+  for (const m of messages) if (m.roomFace?.startsWith("media:")) m.roomFace = map[+m.roomFace.slice(6)];
+  // 인물마다 쓴 아이콘을 표정 목록으로 (룸에서 이미 불러온 인물은 그대로 둔다)
+  const byName = new Map();
+  for (const m of messages) {
+    if (!m.roomFace || m.name === "system" || !m.name.trim()) continue;
+    if (!byName.has(m.name)) byName.set(m.name, new Map());
+    const used = byName.get(m.name);
+    used.set(m.roomFace, (used.get(m.roomFace) || 0) + 1);
+  }
+  const add = [];
+  for (const [name, used] of byName) {
+    if (state.library.some(l => l.name === name)) continue;
+    const urls = [...used.keys()].map(mediaUrl);
+    const main = mediaUrl([...used].sort((a, b) => b[1] - a[1])[0][0]);
+    add.push({ name, color: "", iconUrl: main, faces: urls.map((u, k) => ({ label: urls.length > 1 ? `아이콘 ${k + 1}` : "아이콘", iconUrl: u })), fromLog: true });
+  }
+  if (add.length) applyLibrary(add, true);
 }
 
 function loadSource(text, fileName) {
@@ -2589,6 +2675,7 @@ function loadSource(text, fileName) {
     alert("로그에서 메시지를 찾지 못했어요. 코코포리아에서 내보낸 로그 파일이 맞는지 확인해주세요.");
     return;
   }
+  adoptMedia(messages);
   loadMessages(messages, titleFromSource(text, fileName), fileName);
   // 룸 채팅을 먼저 불러온 상태라면 새 로그 파일에도 실제 표정을 연결
   if (state.roomMessages.length) alignRoomFaces(state.roomMessages);
@@ -2599,6 +2686,7 @@ function appendSource(text, fileName) {
   const messages = parseLog(text);
   if (!messages.length) { alert("이어 붙일 로그에서 메시지를 찾지 못했어요."); return; }
   if (!state.messages.length) { loadSource(text, fileName); return; }
+  adoptMedia(messages, true);
   state.messages.push({ kind: "split", title: titleFromSource(text, fileName), e: {} }, ...messages.map(m => ({ ...m, e: {} })));
   rebuildIndex();
   update();
@@ -3156,7 +3244,7 @@ function renderLoadReport() {
   if (timed) add(`시각 정보 있음 (${timed === lines.length ? "모든 대사" : `${timed}개 대사`}) → 잡담을 시각 기준으로 묶어요`);
   else add("시각 정보 없음 → 잡담은 바로 붙은 것끼리 묶어요. 룸 링크로 채팅 기록을 가져오면 시각이 채워져요", true);
   const faced = lines.filter(m => m.roomFace).length;
-  if (faced) add(`룸 채팅에서 실제 표정이 연결된 대사 ${faced}개`);
+  if (faced) add(`보낼 때 쓴 표정(아이콘)이 연결된 대사 ${faced}개`);
   const blocks = state.messages.filter(m => !isLine(m));
   if (blocks.length) add(Object.entries(countBy(blocks, blockType).reduce((o, [k, n]) => (o[k] = n, o), {})).map(([k, n]) => `${TYPE_NAMES[k]} ${n}`).join(" · "));
   const html = items.join("");
@@ -3677,7 +3765,9 @@ $("bkWidthPreset").addEventListener("change", e => { if (e.target.value) $("bkWi
 /* ---------------- 파일 입력 ---------------- */
 
 async function readText(file) {
-  const buf = await file.arrayBuffer();
+  return decodeText(await file.arrayBuffer());
+}
+function decodeText(buf) {
   let text = new TextDecoder("utf-8").decode(buf);
   // 오래된 로그가 Shift_JIS 등일 경우 대비
   if (text.includes("�")) {
@@ -3694,7 +3784,78 @@ function logGetterMessages(data) {
     .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
 }
 
+// ZIP 풀기 (브라우저 내장 DecompressionStream 사용, 바깥 도구 없이)
+async function unzip(buf) {
+  const v = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let k = buf.byteLength - 22; k >= Math.max(0, buf.byteLength - 65557); k--) if (v.getUint32(k, true) === 0x06054b50) { eocd = k; break; }
+  if (eocd < 0) throw new Error("ZIP 파일을 읽지 못했어요.");
+  const count = v.getUint16(eocd + 10, true);
+  let p = v.getUint32(eocd + 16, true);
+  const files = [];
+  for (let n = 0; n < count && v.getUint32(p, true) === 0x02014b50; n++) {
+    const method = v.getUint16(p + 10, true), size = v.getUint32(p + 20, true);
+    const nameLen = v.getUint16(p + 28, true), extraLen = v.getUint16(p + 30, true), commentLen = v.getUint16(p + 32, true);
+    const local = v.getUint32(p + 42, true);
+    const name = new TextDecoder("utf-8").decode(u8.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith("/")) continue;
+    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+    const raw = u8.subarray(start, start + size);
+    let data;
+    if (method === 0) data = raw.slice().buffer;
+    else if (method === 8) data = await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
+    else continue;
+    files.push({ name, data });
+  }
+  return files;
+}
+
+// 코코포리아가 탭마다 나눠 준 로그 ZIP: "[すべて]"(전체) 파일이 있으면 그것을, 없으면 모든 탭을 시각 순서로 합친다
+async function readZip(file, append) {
+  const entries = (await unzip(await file.arrayBuffer())).filter(f => /\.(html?|txt)$/i.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name));
+  if (!entries.length) { alert("ZIP 안에서 로그 파일(.html)을 찾지 못했어요."); return; }
+  const docs = entries.map(f => ({ name: f.name.split("/").pop(), text: decodeText(f.data) }));
+  const isAll = d => /\[(すべて|全て|全部|전체|모두|all)\]/i.test((d.text.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || d.name);
+  const all = docs.find(isAll);
+  if (all || docs.length === 1) {
+    const d = all || docs[0];
+    if (append) appendSource(d.text, file.name); else loadSource(d.text, file.name);
+    return;
+  }
+  // 탭별 파일만 있으면 합치기: 아이콘 번호를 하나로 모으고, 시각이 있으면 시각 순서로
+  const merged = [], media = [];
+  for (const d of docs) {
+    const msgs = parseLog(d.text);
+    const map = (msgs.media || []).map(url => { let k = media.indexOf(url); if (k < 0) { k = media.length; media.push(url); } return "media:" + k; });
+    // 시각이 없는 줄(시스템 메시지 등)은 같은 파일의 바로 앞 시각을 따라간다
+    let last = 0;
+    for (const m of msgs) {
+      last = m.time || last;
+      merged.push({ ...m, roomFace: m.roomFace?.startsWith("media:") ? map[+m.roomFace.slice(6)] : m.roomFace, at: last });
+    }
+  }
+  if (merged.some(m => m.at)) merged.sort((a, b) => a.at - b.at);
+  for (const m of merged) { delete m.at; if (!m.roomFace) delete m.roomFace; }
+  merged.media = media;
+  if (!merged.length) { alert("ZIP 안의 로그에서 메시지를 찾지 못했어요."); return; }
+  const title = titleFromSource(docs[0].text, file.name).replace(/\s*\[[^\]]*\]\s*$/, "");
+  if (append && state.messages.length) {
+    adoptMedia(merged, true);
+    state.messages.push({ kind: "split", title, e: {} }, ...merged.map(m => ({ ...m, e: {} })));
+    rebuildIndex(); update();
+    toast(`새 섹션으로 이어 붙였어요 · ${file.name}`);
+  } else {
+    adoptMedia(merged);
+    loadMessages(merged, title, `${file.name} (탭 ${docs.length}개 합침)`);
+  }
+}
+
 async function readFile(file, { append = false } = {}) {
+  if (/\.zip$/i.test(file.name) || file.type === "application/zip") {
+    try { await readZip(file, append); } catch (err) { alert(err.message || "ZIP 파일을 읽지 못했어요."); }
+    return;
+  }
   const text = await readText(file);
   if (/\.json$/i.test(file.name)) {
     let data = null;
@@ -4113,7 +4274,7 @@ function workSnapshot() {
   return {
     kind: "nabicoco-work", v: 1, savedAt: Date.now(),
     fileTitle: state.fileTitle, source: $("fileName").textContent.split(" · ")[0],
-    messages: state.messages, tabs: state.tabs, chars: state.chars, library: state.library, form: formState(),
+    messages: state.messages, tabs: state.tabs, chars: state.chars, library: state.library, media: state.media, form: formState(),
   };
 }
 
@@ -4140,6 +4301,7 @@ addEventListener("pagehide", () => { if (saveTimer) flushSave(); });
 function restoreWork(d) {
   if (!d?.messages?.length) return;
   state.library = d.library || [];
+  state.media = d.media || [];
   state.roomMessages = [];
   applyForm(d.form);
   // 설정을 먼저 채워 두면 rebuildIndex가 그대로 이어받는다 (예전 파일은 탭이 true/false)
@@ -4229,8 +4391,12 @@ $("btnOpen").addEventListener("click", () => {
   window.open(url, "_blank");
 });
 $("btnCopyHtml").addEventListener("click", () => copyText(buildOutput(settings({ section: scope() }), "page"), "HTML 코드를 복사했어요"));
-$("btnCopyTistory").addEventListener("click", () =>
-  copyText(buildOutput(settings({ section: scope() }), "tistory"), "티스토리용 코드를 복사했어요. HTML 모드에 붙여넣으세요"));
+$("btnCopyTistory").addEventListener("click", () => {
+  const code = buildOutput(settings({ section: scope() }), "tistory");
+  copyText(code, buildOutput.droppedData
+    ? "티스토리용 코드를 복사했어요. 로그 파일 안에 든 아이콘은 글에 넣기엔 너무 커서 첫 글자로 바꿨어요 (이미지 주소를 넣으면 그대로 나와요)"
+    : "티스토리용 코드를 복사했어요. HTML 모드에 붙여넣으세요");
+});
 
 $("btnVnDownload").addEventListener("click", () => {
   downloadBlob(new Blob([buildVisualNovel(settings({ section: scope() }))], { type: "text/html;charset=utf-8" }), exportName() + " (비주얼 노벨).html");
