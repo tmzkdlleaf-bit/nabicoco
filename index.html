@@ -1281,11 +1281,12 @@ function clusterChatter(items, gapMin) {
       else sinceOther++;
       continue;
     }
+    // 잡담이 계속 이어져도 한 묶음이 너무 길어지지 않게: 처음부터 간격의 6배, 사이에 낀 대사 20줄까지
     const near = open && open.sec === m.sec && (m.time && open.last
-      ? m.time - open.last <= gapMin * 60000
+      ? m.time - open.last <= gapMin * 60000 && m.time - open.first <= gapMin * 360000 && sinceOther <= 20
       : sinceOther === 0);
     if (near) open.items.push(m);
-    else { open = { chat: true, i: m.i, sec: m.sec, items: [m] }; out.push(open); }
+    else { open = { chat: true, i: m.i, sec: m.sec, first: m.time || 0, items: [m] }; out.push(open); }
     open.last = m.time || 0;
     sinceOther = 0;
   }
@@ -1441,6 +1442,7 @@ function youtubeInfo(url, start) {
   return { id: m[1], start: t, link: `https://www.youtube.com/watch?v=${m[1]}${t ? "&t=" + t : ""}` };
 }
 
+const PV_PAGE = 300;
 function buildOutput(settings, mode) {
   const { opts } = settings;
   const L = { ...(LIGHT_THEMES[opts.theme] || LIGHT_THEMES.light) };
@@ -1694,8 +1696,32 @@ function buildOutput(settings, mode) {
   // 미리보기에서는 덩어리 사이에 마우스를 올리면 "＋"가 나와서 그 자리에 넣을 수 있다
   const ins = after => preview ? `<div class="nb-ins" data-after="${after}"><button type="button" tabindex="-1" aria-label="여기에 넣기">＋</button></div>` : "";
   const lastOf = g => g.block ? g.block.i : g.chat ? g.chat.items[g.chat.items.length - 1].i : g.items[g.items.length - 1].i;
-  let html = groups.length ? ins(-1) : "";
-  for (let k = 0; k < groups.length; k++) {
+  // 긴 로그는 미리보기에서 한 쪽(PV_PAGE 묶음)씩만 그린다
+  let from = 0, to = groups.length, pager = "";
+  if (preview) {
+    const pages = Math.max(1, Math.ceil(groups.length / PV_PAGE));
+    const pageOf = gi => Math.min(pages - 1, Math.floor(gi / PV_PAGE));
+    let page = Math.min(Math.max(0, settings.page || 0), pages - 1);
+    if (settings.focus != null) {
+      const has = test => groups.findIndex(g => (g.block ? [g.block] : g.chat ? g.chat.items : g.items).some(test));
+      let gi = has(m => m.i === settings.focus);
+      if (gi < 0) gi = has(m => m.i >= settings.focus);
+      if (gi >= 0) page = pageOf(gi);
+    }
+    const q = (opts.search || "").toLowerCase();
+    const hitPages = [];
+    if (q) groups.forEach((g, gi) => {
+      if (!g.block && (g.chat ? g.chat.items : g.items).some(m => (m.text || "").toLowerCase().includes(q)) && hitPages[hitPages.length - 1] !== pageOf(gi)) hitPages.push(pageOf(gi));
+    });
+    buildOutput.meta = { page, pages, hitPages };
+    if (pages > 1) {
+      from = page * PV_PAGE; to = Math.min(groups.length, from + PV_PAGE);
+      const btn = (step, label, off) => `<button type="button" data-page="${page + step}"${off ? " disabled" : ""}>${label}</button>`;
+      pager = `<div class="nb-pager">${btn(-1, "◀ 앞쪽", page === 0)}<span>${page + 1} / ${pages}쪽</span>${btn(1, "뒤쪽 ▶", page === pages - 1)}</div>`;
+    }
+  }
+  let html = pager + (to > from ? ins(from ? lastOf(groups[from - 1]) : -1) : "");
+  for (let k = from; k < to; k++) {
     const g = groups[k];
     if (g.block) { html += renderBlock(g.block) + ins(lastOf(g)) + "\n"; continue; }
     if (g.chat) { html += chatFold(g) + ins(lastOf(g)) + "\n"; continue; }
@@ -1705,8 +1731,9 @@ function buildOutput(settings, mode) {
       html += boxWrap(run, g.format) + ins(lastOf(run[run.length - 1])) + "\n";
       continue;
     }
-    html += (html && divider ? divider : "") + renderGroup(g) + ins(lastOf(g)) + "\n";
+    html += (k > from && divider ? divider : "") + renderGroup(g) + ins(lastOf(g)) + "\n";
   }
+  html += pager;
 
   const title = escapeHtml(onlySection !== null && onlySection > 0 ? sections[onlySection]?.title || opts.title : opts.title || "세션 로그");
   const lineCount = items.filter(m => !m.block).length;
@@ -1747,7 +1774,9 @@ function buildOutput(settings, mode) {
     + (preview ? "[data-i]{cursor:pointer}[data-i]:hover{outline:2px dashed #8b7cff;outline-offset:3px;border-radius:8px}"
       + ".nb-ins{position:relative;height:14px;margin:-7px 0;z-index:2}.nb-ins::before{content:'';position:absolute;left:0;right:0;top:6px;height:2px;border-radius:2px;background:#8b7cff;opacity:0;transition:opacity .15s}"
       + ".nb-ins button{position:absolute;left:50%;top:-4px;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;border:0;background:#6c5ce7;color:#fff;font-size:16px;line-height:24px;padding:0;cursor:pointer;opacity:0;transition:opacity .15s;box-shadow:0 2px 8px rgb(0 0 0/.25)}"
-      + ".nb-ins:hover::before,.nb-ins:hover button{opacity:1}@media (hover:none){.nb-ins button{opacity:.5}}" : "");
+      + ".nb-ins:hover::before,.nb-ins:hover button{opacity:1}@media (hover:none){.nb-ins button{opacity:.5}}"
+      + ".nb-pager{display:flex;justify-content:center;align-items:center;gap:12px;margin:18px 0;font-size:14px;color:var(--nb-muted)}"
+      + ".nb-pager button{font:inherit;padding:6px 14px;border-radius:999px;border:1px solid var(--nb-line);background:var(--nb-paper);color:var(--nb-text);cursor:pointer}.nb-pager button:disabled{opacity:.35;cursor:default}" : "");
 
   // 필터바: 탭·캐릭터별로 보이기/숨기기
   let filter = "";
@@ -2886,16 +2915,29 @@ document.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click",
 
 /* ---------------- 되돌리기 / 다시 실행 ---------------- */
 
+// 미리보기 쪽 번호 · 다음에 그릴 때 보여줄 대사 · 그린 뒤 할 일
+let pvPage = 0, pvFocus = null, pvAfterLoad = null, pvSearchMoved = false;
 const undoStack = {
   stack: [], index: -1, restoring: false,
+  // 긴 로그에서 메모리를 아끼려고 대사마다 JSON 문자열을 따로 만들고, 바뀌지 않은 대사는 앞 기록의 문자열을 그대로 같이 쓴다
+  pool: new Map(),
   snapshot() {
-    return JSON.stringify({ messages: state.messages, tabs: state.tabs, chars: state.chars, form: formState(), cursor: state.cursor });
+    const pool = new Map();
+    const messages = state.messages.map(m => {
+      const j = JSON.stringify(m);
+      const shared = this.pool.get(j) ?? j;
+      pool.set(shared, shared);
+      return shared;
+    });
+    this.pool = pool;
+    return { messages, rest: JSON.stringify({ tabs: state.tabs, chars: state.chars, form: formState(), cursor: state.cursor }) };
   },
-  reset() { this.stack = [this.snapshot()]; this.index = 0; this.sync(); },
+  same(a, b) { return a && b && a.rest === b.rest && a.messages.length === b.messages.length && a.messages.every((m, k) => m === b.messages[k]); },
+  reset() { pvPage = 0; this.pool = new Map(); this.stack = [this.snapshot()]; this.index = 0; this.sync(); },
   commit() {
     if (this.restoring || !state.messages.length) return;
     const s = this.snapshot();
-    if (s === this.stack[this.index]) return;
+    if (this.same(s, this.stack[this.index])) return;
     this.stack = this.stack.slice(0, this.index + 1);
     this.stack.push(s);
     if (this.stack.length > 80) this.stack.shift();
@@ -2906,7 +2948,8 @@ const undoStack = {
     const next = this.index + step;
     if (next < 0 || next >= this.stack.length) return;
     this.index = next;
-    const s = JSON.parse(this.stack[next]);
+    const s = { ...JSON.parse(this.stack[next].rest), messages: this.stack[next].messages.map(j => JSON.parse(j)) };
+    this.pool = new Map(this.stack[next].messages.map(j => [j, j]));
     this.restoring = true;
     state.messages = s.messages; state.tabs = s.tabs; state.chars = s.chars; state.cursor = s.cursor;
     applyForm(s.form);
@@ -2947,7 +2990,21 @@ function update({ keepScroll = true } = {}) {
     const opts = readOpts();
     const vnView = radio("pvView") === "vn";
     frame.style.colorScheme = vnView ? "dark" : opts.previewScheme;
-    frame.srcdoc = vnView ? buildVisualNovel(settings({ section: scope() }), { preview: true }) : buildOutput(settings(), "preview");
+    if (vnView) frame.srcdoc = buildVisualNovel(settings({ section: scope() }), { preview: true });
+    else {
+      const before = pvPage;
+      let html = buildOutput(settings({ page: pvPage, focus: pvFocus }), "preview");
+      let meta = buildOutput.meta;
+      // 검색어를 바꿨는데 이 쪽에 결과가 없으면 결과가 있는 첫 쪽으로
+      if (pvSearchMoved && meta.hitPages.length && !meta.hitPages.includes(meta.page)) {
+        html = buildOutput(settings({ page: meta.hitPages[0] }), "preview");
+        meta = buildOutput.meta;
+      }
+      pvSearchMoved = false; pvFocus = null;
+      pvPage = meta.page;
+      if (pvPage !== before) savedScroll = 0;
+      frame.srcdoc = html;
+    }
     $("previewTitle").dataset.vn = vnView ? "1" : "";
     $("previewTitle").textContent = vnView ? `${opts.title} · 비주얼 노벨 미리보기` : `${opts.title} · 클릭해서 수정`;
     const deleted = state.messages.filter(m => m.e?.hidden).length;
@@ -2966,14 +3023,25 @@ $("preview").addEventListener("load", () => {
   win.document.addEventListener("click", e => {
     const plus = e.target.closest(".nb-ins");
     if (plus) { e.preventDefault(); openInsertMenu(+plus.dataset.after, e); return; }
+    const pg = e.target.closest("[data-page]");
+    if (pg) { e.preventDefault(); pvPage = +pg.dataset.page; update({ keepScroll: false }); return; }
     const el = e.target.closest("[data-i]");
     if (el) { e.preventDefault(); openItem(+el.dataset.i); }
   });
   win.document.addEventListener("scroll", closeInsertMenu);
-  const hits = win.document.querySelectorAll("mark[data-hit]").length;
-  $("pvCount").textContent = $("pvSearch").value.trim() ? `${hits}개` : "";
   searchIndex = -1;
+  showSearchCount();
+  const after = pvAfterLoad;
+  pvAfterLoad = null;
+  if (after) after();
 });
+function showSearchCount() {
+  const doc = $("preview").contentDocument;
+  const hits = doc ? doc.querySelectorAll("mark[data-hit]").length : 0;
+  const more = radio("pvView") !== "vn" && buildOutput.meta?.pages > 1 ? buildOutput.meta.hitPages.length : 0;
+  $("pvCount").textContent = !$("pvSearch").value.trim() ? ""
+    : (searchIndex >= 0 ? `${searchIndex + 1}/${hits}` : `${hits}개`) + (more > 1 ? ` · ${more}쪽` : "");
+}
 
 // 미리보기 "＋" 메뉴: 대사 · 배경 · 삽화 · BGM · 섹션
 let insertAfter = -1;
@@ -2998,10 +3066,14 @@ $("insMenu").addEventListener("click", e => {
 document.addEventListener("click", e => { if (!e.target.closest("#insMenu")) closeInsertMenu(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeInsertMenu(); });
 
-function scrollPreviewTo(i) {
+function scrollPreviewTo(i, retry = true) {
   const doc = $("preview").contentDocument;
   const el = doc && doc.querySelector(`[data-i="${i}"]`);
-  if (!el) return;
+  if (!el) {
+    // 다른 쪽에 있으면 그 쪽을 그린 뒤 다시
+    if (retry && radio("pvView") !== "vn") { pvFocus = i; pvAfterLoad = () => scrollPreviewTo(i, false); update({ keepScroll: false }); }
+    return;
+  }
   el.scrollIntoView({ block: "center", behavior: "smooth" });
   el.animate?.([{ outline: "3px solid #ff4d6d" }, { outline: "3px solid transparent" }], { duration: 1400 });
 }
@@ -3009,14 +3081,26 @@ function scrollPreviewTo(i) {
 function jumpSearch(step) {
   const doc = $("preview").contentDocument;
   const hits = doc ? [...doc.querySelectorAll("mark[data-hit]")] : [];
+  const meta = buildOutput.meta;
+  const next = searchIndex + step;
+  // 이 쪽의 끝을 넘어가면 결과가 있는 다음(이전) 쪽으로
+  if (radio("pvView") !== "vn" && meta?.pages > 1 && meta.hitPages.length && (!hits.length || next < 0 || next >= hits.length)
+    && (meta.hitPages.length > 1 || meta.hitPages[0] !== meta.page)) {
+    const list = meta.hitPages, n = list.length;
+    const pos = step > 0 ? list.findIndex(p => p > meta.page) : list.findLastIndex(p => p < meta.page);
+    pvPage = pos >= 0 ? list[pos] : list[step > 0 ? 0 : n - 1];
+    pvAfterLoad = () => { searchIndex = step > 0 ? -1 : $("preview").contentDocument.querySelectorAll("mark[data-hit]").length; jumpSearch(step); };
+    update({ keepScroll: false });
+    return;
+  }
   if (!hits.length) return;
   hits.forEach(h => { h.style.outline = ""; });
-  searchIndex = (searchIndex + step + hits.length) % hits.length;
+  searchIndex = (next + hits.length) % hits.length;
   hits[searchIndex].style.outline = "2px solid #ff4d6d";
   hits[searchIndex].scrollIntoView({ block: "center", behavior: "smooth" });
-  $("pvCount").textContent = `${searchIndex + 1}/${hits.length}`;
+  showSearchCount();
 }
-$("pvSearch").addEventListener("input", () => update());
+$("pvSearch").addEventListener("input", () => { pvSearchMoved = true; update(); });
 $("pvSearch").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); jumpSearch(e.shiftKey ? -1 : 1); } });
 $("pvPrev").addEventListener("click", () => jumpSearch(-1));
 $("pvNext").addEventListener("click", () => jumpSearch(1));
