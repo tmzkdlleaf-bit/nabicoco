@@ -234,3 +234,21 @@ test("새 형식 로그 ZIP: 탭별 파일을 시각 순서로 합치고 아이�
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test("메시지 판별: 잡담은 전부, 비밀 탭은 짧게 주고받은 것만 카카오톡처럼", async () => {
+  const { ctx, page } = await open();
+  await page.goto(APP);
+  const r = await page.evaluate(() => {
+    const t0 = Date.parse("2026-08-15T06:00:00Z");
+    const mk = (k, tab, format) => ({ i: k, tab, format, name: "A", text: "x" + k, time: t0 + k * 60000 });
+    const items = [mk(0, "잡담", "other"), mk(1, "HO1 비밀", "secret"), mk(2, "HO1 비밀", "secret"),
+      ...Array.from({ length: 10 }, (_, k) => mk(40 + k, "HO2 비밀", "secret"))];
+    markTalk(items, 5, 8);
+    const talk = items.filter(m => m.talk).map(m => m.i);
+    markTalk(items, 5, 0);
+    return { talk, never: items.filter(m => m.talk && m.format === "secret").length };
+  });
+  assert.deepEqual(r.talk, [0, 1, 2]);
+  assert.equal(r.never, 0);
+  await ctx.close();
+});
