@@ -3822,6 +3822,49 @@ document.querySelectorAll(".tabbar button").forEach(b => b.addEventListener("cli
 const WORK_KEY = "nabicoco-work";
 let saveTimer = 0;
 
+// 작업은 IndexedDB에 둔다 (localStorage는 5MB 안팎이라 이미지를 넣은 긴 로그는 못 담음). 안 되면 localStorage로
+const workDb = {
+  open() {
+    this.p ??= new Promise((ok, fail) => {
+      const req = indexedDB.open("nabicoco", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("kv");
+      req.onsuccess = () => ok(req.result);
+      req.onerror = () => fail(req.error);
+    });
+    return this.p;
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((ok, fail) => {
+      const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv"));
+      tx.oncomplete = () => ok(req.result);
+      tx.onerror = tx.onabort = () => fail(tx.error);
+    });
+  },
+  get(key) { return this.run("readonly", st => st.get(key)); },
+  set(key, value) { return this.run("readwrite", st => st.put(value, key)); },
+  del(key) { return this.run("readwrite", st => st.delete(key)); },
+};
+async function saveWorkNow() {
+  const data = workSnapshot();
+  try {
+    await workDb.set(WORK_KEY, data);
+    try { localStorage.removeItem(WORK_KEY); } catch (_) {}
+  } catch (_) {
+    localStorage.setItem(WORK_KEY, JSON.stringify(data));
+  }
+}
+async function loadSavedWork() {
+  try { const d = await workDb.get(WORK_KEY); if (d?.messages?.length) return d; } catch (_) {}
+  try { return JSON.parse(localStorage.getItem(WORK_KEY)); } catch (_) { return null; }
+}
+async function dropSavedWork() {
+  try { await workDb.del(WORK_KEY); } catch (_) {}
+  try { localStorage.removeItem(WORK_KEY); } catch (_) {}
+}
+// 브라우저가 공간이 모자랄 때 지우지 않도록 부탁 (허락 여부는 브라우저 몫)
+navigator.storage?.persist?.().catch(() => {});
+
 function workSnapshot() {
   return {
     kind: "nabicoco-work", v: 1, savedAt: Date.now(),
@@ -3833,15 +3876,22 @@ function workSnapshot() {
 function scheduleSave() {
   if (!state.messages.length) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(WORK_KEY, JSON.stringify(workSnapshot()));
-      $("saveState").textContent = "✓ 이 브라우저에 자동 저장됨 · " + new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-    } catch (_) {
-      $("saveState").textContent = "로그가 커서 자동 저장을 못 했어요. '작업 파일 저장'으로 보관해 주세요.";
-    }
-  }, 800);
+  saveTimer = setTimeout(flushSave, 800);
 }
+async function flushSave() {
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  if (!state.messages.length) return;
+  try {
+    await saveWorkNow();
+    $("saveState").textContent = "✓ 이 브라우저에 자동 저장됨 · " + new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  } catch (_) {
+    $("saveState").textContent = "자동 저장을 못 했어요. '작업 파일 저장'으로 보관해 주세요.";
+  }
+}
+// 탭을 닫거나 다른 앱으로 넘어갈 때 기다리던 저장을 바로
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && saveTimer) flushSave(); });
+addEventListener("pagehide", () => { if (saveTimer) flushSave(); });
 
 function restoreWork(d) {
   if (!d?.messages?.length) return;
@@ -3865,16 +3915,15 @@ function restoreWork(d) {
   update({ keepScroll: false });
 }
 
-(function offerRestore() {
-  let d = null;
-  try { d = JSON.parse(localStorage.getItem(WORK_KEY)); } catch (_) {}
-  if (!d?.messages?.length) return;
+(async function offerRestore() {
+  const d = await loadSavedWork();
+  if (!d?.messages?.length || state.messages.length) return;
   $("restoreText").textContent = `지난 작업이 남아 있어요 · ${d.fileTitle || "제목 없음"} · 메시지 ${d.messages.length}개`
     + (d.savedAt ? ` · ${new Date(d.savedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "");
   $("restoreBanner").hidden = false;
   $("btnRestore").onclick = () => { restoreWork(d); $("restoreBanner").hidden = true; toast("지난 작업을 불러왔어요"); };
   $("btnDiscard").onclick = () => {
-    try { localStorage.removeItem(WORK_KEY); } catch (_) {}
+    dropSavedWork();
     $("restoreBanner").hidden = true;
   };
 })();
